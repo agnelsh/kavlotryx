@@ -172,6 +172,68 @@ class AuditEvent(Base):
     detail: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
+class UserPref(Base):
+    """Console preferences per signed-in principal (persona dashboard, team)."""
+
+    __tablename__ = "user_prefs"
+    principal: Mapped[str] = mapped_column(String(128), primary_key=True)
+    persona: Mapped[str] = mapped_column(String(32), default="")
+    team: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SettingOverride(Base):
+    """A policy value changed in the console. It wins over policy.yaml."""
+
+    __tablename__ = "setting_overrides"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Any] = mapped_column(JsonType)
+    updated_by: Mapped[str] = mapped_column(String(128), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DirectoryPerson(Base):
+    """A person from the identity provider (Microsoft Graph), with group names."""
+
+    __tablename__ = "directory_people"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    upn: Mapped[str] = mapped_column(String(320), default="", index=True)
+    mail: Mapped[str] = mapped_column(String(320), default="", index=True)
+    nickname: Mapped[str] = mapped_column(String(128), default="", index=True)
+    display_name: Mapped[str] = mapped_column(String(256), default="")
+    department: Mapped[str] = mapped_column(String(256), default="")
+    groups: Mapped[list[str]] = mapped_column(JsonType, default=list)  # group display names
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CatalogApp(Base):
+    """An application from the enterprise catalog (LeanIX fact sheet)."""
+
+    __tablename__ = "catalog_apps"
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256))
+    aliases: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    external_ids: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    repos: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    teams: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    responsible: Mapped[list[str]] = mapped_column(JsonType, default=list)  # e-mail addresses
+    url: Mapped[str] = mapped_column(String(512), default="")
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ConnectorRun(Base):
+    __tablename__ = "connector_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    connector: Mapped[str] = mapped_column(String(32), index=True)
+    mode: Mapped[str] = mapped_column(String(16))  # live | snapshot
+    status: Mapped[str] = mapped_column(String(16))  # ok | error
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    counts: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    actor: Mapped[str] = mapped_column(String(128), default="")
+
+
 def make_engine(url: str) -> Engine:
     kwargs: dict[str, Any] = {}
     if url.startswith("sqlite"):

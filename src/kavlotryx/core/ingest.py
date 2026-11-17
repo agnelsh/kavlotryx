@@ -66,6 +66,20 @@ def _new_finding(fp: str, f: FindingFacts) -> Finding:
     )
 
 
+def _anchor_relative_path(facts: FindingFacts, scope: str) -> None:
+    """Make a relative filesystem scan ("fs:.") unique by the scan scope.
+
+    Without this, two services scanned as "." would share one asset and their
+    findings would merge.
+    """
+    if not facts.asset_key.startswith("fs:") or facts.asset_key.startswith("fs:/"):
+        return
+    rel = facts.asset_key[3:].strip("./") or "."
+    facts.asset_key = f"fs:{scope}" if rel == "." else f"fs:{scope}/{rel}"
+    if facts.artifact in ("", ".", "./") or facts.artifact == rel:
+        facts.artifact = scope.split(":", 1)[-1]
+
+
 def ingest(
     session: Session,
     scanner: str,
@@ -90,6 +104,7 @@ def ingest(
         if not facts.asset_key:
             parsed.skipped.append(f"{facts.title or 'record'}: no asset identifier")
             continue
+        _anchor_relative_path(facts, scope)
         fp = fingerprint(facts)
         session.add(Observation(scan_id=scan.id, fingerprint=fp, class_uid=facts.class_uid, raw=rec))
         prev = by_fp.get(fp)

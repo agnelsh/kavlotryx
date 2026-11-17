@@ -34,7 +34,7 @@ def test_account_default_needs_review(day1):
     f = _find(day1, asset_key="arn:aws:ec2:us-east-1:123456789012:security-group/sg-0a1b2c3d4e5f60001")
     a = day1.explain(f.id)
     assert (a.owner, a.rule, a.needs_review) == ("platform", "default:account", True)
-    assert [t.rule for t in a.trace][:3] == ["override", "tag", "codeowners"]
+    assert [t.rule for t in a.trace][:5] == ["override", "tag", "directory", "codeowners", "leanix"]
 
 
 def test_pattern_rule(day1):

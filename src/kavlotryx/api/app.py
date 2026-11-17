@@ -202,6 +202,27 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
     def summary(_: Principal = Depends(require(READ))):
         return svc.summary()
 
+    @app.get("/api/v1/connectors", tags=["connectors"])
+    def connectors(_: Principal = Depends(require(READ))):
+        from kavlotryx.connectors import CONNECTORS, connector_mode, last_runs
+
+        with svc.session() as s:
+            runs = last_runs(s)
+        return [{"name": n, "mode": connector_mode(svc.settings, n),
+                 "last_sync": runs[n].finished_at if runs[n] else None,
+                 "status": runs[n].status if runs[n] else None,
+                 "counts": runs[n].counts if runs[n] else {}} for n in CONNECTORS]
+
+    @app.post("/api/v1/connectors/{name}/sync", tags=["connectors"])
+    def connector_sync(name: str, who: Principal = Depends(require(ADMIN))):
+        from kavlotryx.connectors import ConnectorError
+
+        try:
+            run = svc.sync_connector(name, actor=who.name)
+        except ConnectorError as e:
+            raise HTTPException(422, str(e)) from e
+        return {"name": name, "mode": run.mode, "status": run.status, "counts": run.counts}
+
     from kavlotryx.web import mount_console
 
     mount_console(app, svc)

@@ -9,15 +9,17 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from kavlotryx.config import Settings, load_ownership, load_policy
+from kavlotryx.config import EDITABLE_POLICY_KEYS, PolicyConfig, Settings, load_ownership, load_policy
 from kavlotryx.core.grouping import rebuild
 from kavlotryx.core.ingest import ingest
-from kavlotryx.core.ownership import Assignment, OwnershipResolver
+from kavlotryx.core.ownership import Assignment, resolver_for
 from kavlotryx.db import (
     AuditEvent,
     Finding,
     Observation,
     OwnerOverride,
+    SettingOverride,
+    UserPref,
     WorkItem,
     audit,
     init_db,
@@ -49,8 +51,72 @@ class Kavlotryx:
         return load_ownership(self.settings.config_dir)
 
     @property
-    def policy(self):
-        return load_policy(self.settings.config_dir)
+    def policy(self) -> PolicyConfig:
+        return load_policy(self.settings.config_dir, self.policy_overrides())
+
+    def policy_overrides(self) -> dict:
+        with self.session() as s:
+            return {o.key: o.value for o in s.scalars(select(SettingOverride))}
+
+    def set_policy(self, updates: dict, actor: str) -> PolicyConfig:
+        """Validate and store console policy changes. Unknown keys are refused."""
+        bad = sorted(set(updates) - set(EDITABLE_POLICY_KEYS))
+        if bad:
+            raise ValueError(f"not editable: {', '.join(bad)}")
+        current = self.policy.model_dump()
+        merged = PolicyConfig.model_validate({**current, **updates})  # raises on bad values
+        if not 0 < merged.confidence_limit <= 1:
+            raise ValueError("confidence_limit must be between 0 and 1")
+        if any(d < 1 for d in merged.due_days.values()) or merged.scan_stale_hours < 1:
+            raise ValueError("days and hours must be at least 1")
+        with self.session() as s:
+            for key, value in updates.items():
+                value = getattr(merged, key)
+                row = s.get(SettingOverride, key) or SettingOverride(key=key)
+                row.value, row.updated_by, row.updated_at = value, actor, utcnow()
+                s.add(row)
+            audit(s, actor, "settings.policy", "policy", **{k: getattr(merged, k) for k in updates})
+            s.commit()
+        return self.policy
+
+    def reset_policy(self, actor: str) -> None:
+        with self.session() as s:
+            keys = [o.key for o in s.scalars(select(SettingOverride))]
+            for o in s.scalars(select(SettingOverride)):
+                s.delete(o)
+            audit(s, actor, "settings.policy.reset", "policy", keys=keys)
+            s.commit()
+
+    # -- console preferences ------------------------------------------------------
+
+    def get_pref(self, principal: str) -> tuple[str, str]:
+        with self.session() as s:
+            p = s.get(UserPref, principal)
+        if p and p.persona:
+            return p.persona, p.team
+        return self.settings.default_personas().get(principal, ""), (p.team if p else "")
+
+    def set_pref(self, principal: str, persona: str | None = None, team: str | None = None) -> None:
+        with self.session() as s:
+            p = s.get(UserPref, principal) or UserPref(principal=principal)
+            if persona is not None:
+                p.persona = persona
+            if team is not None:
+                p.team = team
+            p.updated_at = utcnow()
+            s.add(p)
+            s.commit()
+
+    # -- connectors -----------------------------------------------------------------
+
+    def sync_connector(self, name: str, actor: str = "system", rebuild: bool = True, client=None):
+        from kavlotryx.connectors import sync
+
+        with self.session() as s:
+            run = sync(s, self.settings, self.ownership, name, actor=actor, client=client)
+        if rebuild:
+            self.rebuild()
+        return run
 
     @cached_property
     def tracker(self) -> TicketTracker:
@@ -94,9 +160,7 @@ class Kavlotryx:
             f = s.get(Finding, finding_id)
             if f is None:
                 raise NotFound(f"finding {finding_id}")
-            overrides = list(s.scalars(select(OwnerOverride)))
-            return OwnershipResolver(self.ownership, self.policy, self.settings.config_dir,
-                                     overrides).resolve(f)
+            return resolver_for(s, self.ownership, self.policy, self.settings.config_dir).resolve(f)
 
     def set_owner(self, finding_id: int, owner: str, actor: str, reason: str = "",
                   match: str = "asset") -> OwnerOverride:

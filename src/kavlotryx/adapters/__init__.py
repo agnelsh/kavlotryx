@@ -13,11 +13,13 @@ from kavlotryx.adapters.base import Adapter, AdapterError, ParseResult
 from kavlotryx.adapters.ocsf import OcsfAdapter
 from kavlotryx.adapters.prowler import ProwlerAdapter
 from kavlotryx.adapters.trivy import TrivyAdapter
+from kavlotryx.adapters.wiz import WizAdapter
 
 _BUILTIN: dict[str, type[Adapter]] = {
     "prowler": ProwlerAdapter,
     "trivy": TrivyAdapter,
     "ocsf": OcsfAdapter,
+    "wiz": WizAdapter,
 }
 
 

@@ -48,10 +48,34 @@ class PatternRule(BaseModel):
     asset: str = ""  # glob over asset_key
     name: str = ""  # glob over asset or image name
     rule: str = ""  # glob over rule_key
+    type: str = ""  # glob over the resource type, e.g. "Microsoft.Compute/*" or "ServiceAccount"
+
+
+class GraphConnectorConfig(BaseModel):
+    """Microsoft Graph: a person named in a tag resolves to a team through Entra groups."""
+
+    group_map: dict[str, str] = Field(default_factory=dict)  # group display name or id -> owner slug
+    person_tag_keys: list[str] = Field(default_factory=lambda: ["owner", "contact", "created-by"])
+
+
+class LeanixConnectorConfig(BaseModel):
+    """LeanIX: an asset matched to an Application fact sheet gets that application's team."""
+
+    app_tag_keys: list[str] = Field(default_factory=lambda: ["app", "application", "leanix-app"])
+    match_artifact_names: bool = True  # image repository or resource name equals an app alias
+    team_map: dict[str, str] = Field(default_factory=dict)  # LeanIX team (Organization) name -> owner
+    team_relation: str = "relApplicationToOrganization"  # older workspaces: relApplicationToUserGroup
+    responsible_roles: list[str] = Field(default_factory=lambda: ["Responsible", "Application Owner"])
+
+
+class ConnectorsConfig(BaseModel):
+    graph: GraphConnectorConfig = Field(default_factory=GraphConnectorConfig)
+    leanix: LeanixConnectorConfig = Field(default_factory=LeanixConnectorConfig)
 
 
 class OwnershipConfig(BaseModel):
     owners: list[OwnerDef] = Field(default_factory=list)
+    connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
     tag_keys: list[str] = Field(default_factory=lambda: ["owner", "team"])
     codeowners: list[CodeownersSource] = Field(default_factory=list)
     image_default_path: str = "Dockerfile"
@@ -88,6 +112,12 @@ class PolicyConfig(BaseModel):
     dispatch_without_fix: bool = False
     production_tag_keys: list[str] = Field(default_factory=lambda: ["env", "environment"])
     production_values: list[str] = Field(default_factory=lambda: ["prod", "production"])
+    scan_stale_hours: int = 48  # a scope with no scan for longer is shown as stale
+
+
+# Policy keys that admins may change in the console (Settings page).
+EDITABLE_POLICY_KEYS = ("confidence_limit", "due_days", "dispatch_min_priority", "dispatch_without_fix",
+                        "production_tag_keys", "production_values", "scan_stale_hours")
 
 
 # --- process settings --------------------------------------------------------
@@ -105,6 +135,14 @@ class Settings:
     jira_issue_type: str = "Task"
     api_tokens: str = field(default="", repr=False)  # "name:role:token,name:role:token"
     max_upload_mb: int = 200
+    personas: str = ""  # default console persona per token name: "alice=team_lead,bob=security_manager"
+    graph_tenant_id: str = ""
+    graph_client_id: str = ""
+    graph_client_secret: str = field(default="", repr=False)
+    graph_snapshot: str = ""  # path to a JSON snapshot, used instead of the live API (demos, air-gapped)
+    leanix_host: str = ""  # e.g. acme.leanix.net
+    leanix_token: str = field(default="", repr=False)
+    leanix_snapshot: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -120,7 +158,23 @@ class Settings:
             jira_issue_type=e("KAVLO_JIRA_ISSUE_TYPE", "Task"),
             api_tokens=e("KAVLO_API_TOKENS", ""),
             max_upload_mb=int(e("KAVLO_MAX_UPLOAD_MB", "200")),
+            personas=e("KAVLO_PERSONAS", ""),
+            graph_tenant_id=e("KAVLO_GRAPH_TENANT_ID", ""),
+            graph_client_id=e("KAVLO_GRAPH_CLIENT_ID", ""),
+            graph_client_secret=e("KAVLO_GRAPH_CLIENT_SECRET", ""),
+            graph_snapshot=e("KAVLO_GRAPH_SNAPSHOT", ""),
+            leanix_host=e("KAVLO_LEANIX_HOST", ""),
+            leanix_token=e("KAVLO_LEANIX_TOKEN", ""),
+            leanix_snapshot=e("KAVLO_LEANIX_SNAPSHOT", ""),
         )
+
+    def default_personas(self) -> dict[str, str]:
+        out = {}
+        for item in filter(None, (p.strip() for p in self.personas.split(","))):
+            name, _, persona = item.partition("=")
+            if name and persona:
+                out[name.strip()] = persona.strip()
+        return out
 
 
 def _load_yaml(path: Path) -> dict:
@@ -137,5 +191,7 @@ def load_ownership(config_dir: Path) -> OwnershipConfig:
     return OwnershipConfig.model_validate(_load_yaml(config_dir / "ownership.yaml"))
 
 
-def load_policy(config_dir: Path) -> PolicyConfig:
-    return PolicyConfig.model_validate(_load_yaml(config_dir / "policy.yaml"))
+def load_policy(config_dir: Path, overrides: dict | None = None) -> PolicyConfig:
+    data = _load_yaml(config_dir / "policy.yaml")
+    data.update({k: v for k, v in (overrides or {}).items() if k in EDITABLE_POLICY_KEYS})
+    return PolicyConfig.model_validate(data)

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, state_badge %}
+{% from "_parts.html" import vuln_tabs %}
 {% block title %}Work items & Jira{% endblock %}
 {% block content %}
 <section class="head">
@@ -16,6 +17,8 @@
   </div>
   {% endif %}
 </section>
+
+{{ vuln_tabs("items") }}
 
 <section class="states">
   {% for key, label, note in states %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, yes, mode_badge %}
+{% from "_parts.html" import field with context %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Settings · <span class="t-violet">policy, integrations, access</span></div>
+    <h1>Settings</h1>
+    <p class="lede">Admins can change the remediation policy here; every change is audited. Credentials stay in environment variables and are never shown.</p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("gear") }}Remediation policy</h2>{% if overrides %}<span class="tag-amber mono">{{ overrides|length }} changed in the console</span>{% endif %}</div>
+  <form class="form policy-form" method="post" action="/ui/settings/policy">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <fieldset {{ 'disabled' if not is_admin }}>
+    <div class="policy-grid">
+      {{ field("Confidence limit", "confidence_limit", "number", policy.confidence_limit, "Owners below this go to review.", 'step="0.05" min="0.05" max="1"') }}
+      {{ field("Stale scope after (hours)", "scan_stale_hours", "number", policy.scan_stale_hours, "Scopes with no newer scan show as stale.", 'min="1" max="8760"') }}
+      <div class="field"><span>Due date by priority (days) <small class="src">{{ sources.due_days }}</small></span>
+        <div class="due-row">
+          {% for p in ["Critical", "High", "Medium", "Low"] %}<label class="due"><small class="prio prio-{{ p|lower }}"><i class="dot"></i>{{ p }}</small><input type="number" name="due_{{ p|lower }}" value="{{ policy.due_days.get(p, 180) }}" min="1" max="3650"></label>{% endfor %}
+        </div></div>
+      <label class="field"><span>Lowest priority to dispatch <small class="src">{{ sources.dispatch_min_priority }}</small></span>
+        <select name="dispatch_min_priority">{% for p in ["Low", "Medium", "High", "Critical"] %}<option {{ 'selected' if policy.dispatch_min_priority == p }}>{{ p }}</option>{% endfor %}</select></label>
+      <label class="field check"><input type="checkbox" name="dispatch_without_fix" {{ 'checked' if policy.dispatch_without_fix }}><span>Dispatch vulnerabilities with no fix yet <small class="src">{{ sources.dispatch_without_fix }}</small></span></label>
+      {{ field("Production tag keys", "production_tag_keys", "text", policy.production_tag_keys|join(', '), "Comma-separated, e.g. env, environment.") }}
+      {{ field("Production tag values", "production_values", "text", policy.production_values|join(', '), "A matching tag raises priority one level.") }}
+    </div>
+    {% if is_admin %}
+    <div class="form-actions"><button class="btn btn-primary">{{ icon("check") }}Save and rebuild</button></div>
+    {% else %}<p class="muted small">Only admins can change the policy.</p>{% endif %}
+    </fieldset>
+  </form>
+  {% if is_admin and overrides %}
+  <form method="post" action="/ui/settings/policy/reset"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">{{ icon("refresh") }}Reset console changes to policy.yaml</button></form>
+  {% endif %}
+</section>
+
+<div class="split" id="connectors">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("ticket") }}Ticket tracker</h2><span class="tag-{{ 'ok' if trk.kind == 'jira' else 'amber' }} mono">{{ 'Jira Cloud' if trk.kind == 'jira' else 'fake tracker (demo)' }}</span></div>
+    <dl class="kv mono small">
+      <dt>KAVLO_JIRA_URL</dt><dd>{{ trk.host or '—' }}</dd>
+      <dt>KAVLO_JIRA_EMAIL</dt><dd>{{ yes(trk.email) }}</dd>
+      <dt>KAVLO_JIRA_TOKEN</dt><dd>{{ yes(trk.token) }}</dd>
+      <dt>issue type</dt><dd>{{ trk.issue_type }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("users") }}Ownership connectors</h2><a class="link" href="/ui/ownership#connectors">Ownership {{ icon("arrow") }}</a></div>
+    <dl class="kv mono small">
+      <dt>Microsoft Graph</dt><dd>{{ mode_badge(graph.mode) }}</dd>
+      <dt>KAVLO_GRAPH_TENANT_ID</dt><dd>{{ yes(graph.tenant) }}</dd>
+      <dt>KAVLO_GRAPH_CLIENT_ID</dt><dd>{{ yes(graph.client) }}</dd>
+      <dt>KAVLO_GRAPH_CLIENT_SECRET</dt><dd>{{ yes(graph.secret) }}</dd>
+      {% if graph.snapshot %}<dt>KAVLO_GRAPH_SNAPSHOT</dt><dd>{{ graph.snapshot }}</dd>{% endif %}
+      <dt>LeanIX</dt><dd>{{ mode_badge(leanix.mode) }}</dd>
+      <dt>KAVLO_LEANIX_HOST</dt><dd>{{ leanix.host or '—' }}</dd>
+      <dt>KAVLO_LEANIX_TOKEN</dt><dd>{{ yes(leanix.token) }}</dd>
+      {% if leanix.snapshot %}<dt>KAVLO_LEANIX_SNAPSHOT</dt><dd>{{ leanix.snapshot }}</dd>{% endif %}
+      <dt>team relation</dt><dd>{{ leanix.relation }}</dd>
+    </dl>
+    <p class="muted small">Graph needs an app registration with <code>GroupMember.Read.All</code> (application). LeanIX needs a technical-user API token with read access.</p>
+  </section>
+</div>
+
+<div class="split">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("verified") }}Access</h2>{% if auth_off %}<span class="tag-orange mono">auth off (local)</span>{% endif %}</div>
+    {% if tokens %}
+    <table class="tbl"><thead><tr><th>Token name</th><th>Role</th><th>Default dashboard</th></tr></thead><tbody>
+      {% for name, role, persona in tokens %}<tr><td class="mono">{{ name }}</td><td><span class="tag-dim mono">{{ role }}</span></td><td class="small">{{ (personas|selectattr(0, "equalto", persona)|map(attribute=1)|first) or '—' }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="empty-note">No tokens: the console runs with <code>--insecure-no-auth</code>.</p>{% endif %}
+    <p class="muted small">Tokens come from <code>KAVLO_API_TOKENS</code> (name:role:token). Default dashboards come from <code>KAVLO_PERSONAS</code> (name=persona); people can switch on the dashboard.</p>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("layers") }}Configuration</h2></div>
+    <dl class="kv mono small">
+      <dt>config directory</dt><dd>{{ config_dir }}</dd>
+      {% for n, ok in files.items() %}<dt>{{ n }}</dt><dd>{{ yes(ok) if ok else 'missing (defaults)' }}</dd>{% endfor %}
+      <dt>owners</dt><dd>{{ owners }}</dd>
+      <dt>database</dt><dd>{{ dialect }}</dd>
+      <dt>version</dt><dd>kavlotryx {{ version }} · OCSF {{ ocsf_version }}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="card term-card">
+  <div class="card-head"><span class="mono small"><i class="dot dot-crit"></i><i class="dot dot-amber"></i><i class="dot dot-ok"></i> audit_events</span><span class="t-ok mono small">append-only · latest {{ events|length }}</span></div>
+  <div class="term mono small">
+    {% for e in events %}
+    <div class="log"><span class="muted">{{ e.at.strftime('%m-%d %H:%M:%S') }}</span> <span class="{{ 't-ok' if 'verified' in e.action or e.action.endswith('.sync') else ('t-crit' if 'reopen' in e.action or 'error' in e.action else 't-amber') }}">[{{ e.action|upper }}]</span> <span>{{ e.target|short(40) }}</span> <span class="muted">{{ e.actor }}</span></div>
+    {% else %}<div class="muted">no events yet</div>{% endfor %}
+  </div>
+</section>
+{% endblock %}

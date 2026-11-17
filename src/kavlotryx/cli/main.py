@@ -28,7 +28,9 @@ app = typer.Typer(help="Kavlotryx: scanner findings to owned, tracked, scan-veri
                   no_args_is_help=True)
 owner_app = typer.Typer(help="Explain or override finding owners.", no_args_is_help=True)
 tracker_app = typer.Typer(help="Inspect the fake tracker used for demos.", no_args_is_help=True)
+connectors_app = typer.Typer(help="Microsoft Graph and LeanIX ownership connectors.", no_args_is_help=True)
 app.add_typer(owner_app, name="owner")
+app.add_typer(connectors_app, name="connectors")
 app.add_typer(tracker_app, name="tracker")
 console = Console()
 
@@ -86,6 +88,9 @@ def ingest(
                   f"{len(r.skipped)} skipped")
     for reason in r.skipped[:10]:
         console.print(f"  skipped: {reason}")
+    if not scope and r.scope == r.scanner:
+        console.print("[yellow]warning:[/yellow] the scope could not be read from this file; pass --scope "
+                      "so that a later scan can prove fixes for the same account or artifact")
 
 
 @app.command()
@@ -229,6 +234,42 @@ def owner_set(
     except (NotFound, ValueError) as e:
         fail(str(e))
     console.print(f"override saved: {o.match_type} {o.match_value} -> {o.owner_slug}. Run 'kavlo rebuild'.")
+
+
+@connectors_app.command("sync")
+def connectors_sync(
+    name: Annotated[str, typer.Argument(help="graph | leanix | all")],
+    no_rebuild: Annotated[bool, typer.Option("--no-rebuild", help="Do not re-resolve owners after the sync")] = False,
+) -> None:
+    """Copy people (Graph) or applications (LeanIX) into the local cache, then rebuild owners."""
+    from kavlotryx.connectors import CONNECTORS, ConnectorError
+
+    k = svc()
+    for n in (CONNECTORS if name == "all" else (name,)):
+        try:
+            run = k.sync_connector(n, actor=actor(), rebuild=False)
+        except ConnectorError as e:
+            fail(str(e))
+        console.print(f"{n}: {run.mode} sync ok {json.dumps(run.counts)}")
+    if not no_rebuild:
+        r = k.rebuild()
+        console.print(f"rebuilt: {r.work_items} work items, {r.needs_review} findings need owner review")
+
+
+@connectors_app.command("status")
+def connectors_status() -> None:
+    """Show each connector's mode and last sync."""
+    from kavlotryx.connectors import CONNECTORS, connector_mode, last_runs
+
+    k = svc()
+    with k.session() as s:
+        runs = last_runs(s)
+    t = Table("connector", "mode", "last sync", "status", "counts")
+    for n in CONNECTORS:
+        r = runs[n]
+        t.add_row(n, connector_mode(k.settings, n), r.finished_at.isoformat() if r and r.finished_at else "never",
+                  r.status if r else "", json.dumps(r.counts) if r else "")
+    console.print(t)
 
 
 @tracker_app.command("list")

@@ -43,6 +43,7 @@ kavlo = "kavlotryx.cli.main:app"
 prowler = "kavlotryx.adapters.prowler:ProwlerAdapter"
 trivy = "kavlotryx.adapters.trivy:TrivyAdapter"
 ocsf = "kavlotryx.adapters.ocsf:OcsfAdapter"
+wiz = "kavlotryx.adapters.wiz:WizAdapter"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kavlotryx"]

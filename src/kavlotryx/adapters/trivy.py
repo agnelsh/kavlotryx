@@ -48,7 +48,8 @@ class TrivyAdapter(Adapter):
             asset_type = "Container Image"
             repo = normalize_repo(str(labels.get(SOURCE_LABEL, "")))
         else:
-            artifact = normalize_repo(artifact_name) or artifact_name
+            is_repo = artifact_type == "repository"
+            artifact = (normalize_repo(artifact_name) or artifact_name) if is_repo else artifact_name
             asset_key = f"git:{artifact}" if artifact_type == "repository" else f"fs:{artifact_name}"
             asset_type = "Repository" if artifact_type == "repository" else "Filesystem"
             repo = artifact if artifact_type == "repository" else ""
@@ -71,7 +72,10 @@ class TrivyAdapter(Adapter):
             },
         }
 
-        result = ParseResult(default_scope=f"trivy:{artifact or artifact_name}")
+        # A relative filesystem path ("." or "src/app") does not identify what was scanned.
+        # Leave the scope unknown so that ingest asks for --scope and keys assets by it.
+        relative_fs = asset_type == "Filesystem" and not artifact_name.startswith("/")
+        result = ParseResult(default_scope="" if relative_fs else f"trivy:{artifact or artifact_name}")
         for res in doc.get("Results") or []:
             if not isinstance(res, dict):
                 result.skipped.append("result entry is not an object")
@@ -91,6 +95,9 @@ class TrivyAdapter(Adapter):
                     result.skipped.append(f"{target}: vulnerability without VulnerabilityID or PkgName")
                 else:
                     result.records.append(rec)
+            if res.get("Secrets"):
+                result.skipped.append(f"{target}: {len(res['Secrets'])} secret findings "
+                                      "(secret findings are not supported yet)")
             for m in res.get("Misconfigurations") or []:
                 if str(m.get("Status", "FAIL")).upper() != "FAIL":
                     continue

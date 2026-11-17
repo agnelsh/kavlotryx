@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, sev_badge, mode_badge %}
+{% from "_parts.html" import run_line, sync_button with context %}
+{% block title %}Ownership{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Ownership · <span class="t-violet">owner with evidence</span></div>
+    <h1>Who fixes what, and why</h1>
+    <p class="lede">Ordered rules give every finding an owner, a confidence and the evidence. Microsoft Graph and LeanIX add identity and application context so findings reach the right team.</p>
+  </div>
+  {% if can_write %}
+  <div class="head-actions">
+    <form method="post" action="/ui/actions/rebuild"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline">{{ icon("refresh") }}Re-evaluate all rules</button></form>
+  </div>
+  {% endif %}
+</section>
+
+<section class="kpis kpis-4">
+  <div class="kpi"><span class="kpi-label">Owners</span><b class="kpi-value">{{ cfg.owners|length }}</b><span class="kpi-note">teams in ownership.yaml</span></div>
+  <div class="kpi kpi-ok"><span class="kpi-label">Coverage</span><b class="kpi-value t-ok">{{ (coverage ~ '%') if coverage is not none else '—' }}</b><span class="kpi-note">open findings at or above {{ "%.2f"|format(limit) }}</span></div>
+  <a class="kpi kpi-warn" href="/ui/vulnerabilities?conf=review"><span class="kpi-label">Needs review</span><b class="kpi-value t-amber">{{ review }}</b><span class="kpi-note">owner below the limit</span></a>
+  <div class="kpi"><span class="kpi-label">Manual overrides</span><b class="kpi-value">{{ overrides|length }}</b><span class="kpi-note">rule 1, confidence 1.0</span></div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>{{ icon("tree") }}Rule ladder <span class="pill mono">first match wins: 1 → 7</span></h2><span class="muted mono">{{ total }} open findings</span></div>
+  <div class="ladder ladder-7">
+    {% for r in ladder %}
+    <a class="rule tone-{{ r.tone }}" href="/ui/vulnerabilities?rule={{ r.key }}">
+      <div class="rule-top"><span class="rule-tier">Rule {{ r.n }} · {{ r.tier }}</span><span class="rule-conf">{{ r.conf }}</span></div>
+      <b class="rule-name">{{ r.name }}</b>
+      <span class="rule-desc">{{ r.desc }}</span>
+      <div class="rule-count"><b class="mono">{{ r.count }}</b><span class="mono">{{ r.pct }}%</span></div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("users") }}Owners</h2><span class="muted small mono">ownership.yaml</span></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Owner</th><th>Jira project</th><th>Aliases</th><th>Entra groups</th><th>LeanIX teams</th><th class="num">Open findings</th><th class="num">Active items</th><th class="num">Review</th></tr></thead>
+    <tbody>
+    {% for r in owners %}
+    {% set slug = r.o.slug if r.o else r.slug %}
+    <tr><td><a class="owner-tag {{ 'owner-review' if not r.o }}" href="/ui/vulnerabilities?owner={{ slug }}">@{{ slug }}</a><br><small class="muted">{{ r.o.name if r.o else 'fallback owner' }}</small></td>
+      <td class="mono">{{ r.o.jira_project if r.o and r.o.jira_project else '—' }}</td>
+      <td class="mono small">{{ (r.o.aliases|join(', ')) if r.o and r.o.aliases else '—' }}</td>
+      <td class="mono small">{{ r.groups|join(', ') or '—' }}</td>
+      <td class="small">{{ r.teams|join(', ') or '—' }}</td>
+      <td class="num mono">{{ r.findings }}</td><td class="num mono">{{ r.active }}</td>
+      <td class="num mono {{ 't-amber' if r.review }}">{{ r.review }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<div class="split" id="connectors">
+  <section class="card connector">
+    <div class="card-head">
+      <h2><span class="conn-logo">MS</span>Microsoft Graph</h2>
+      {{ mode_badge(connectors.graph.mode) }}
+    </div>
+    <p class="muted small">A tag that names a person ({% for k in cfg.connectors.graph.person_tag_keys %}<code>{{ k }}</code>{{ ', ' if not loop.last }}{% endfor %}) resolves through that person's Entra ID groups to a team. Rule 3, confidence 0.80.</p>
+    {{ run_line(connectors.graph) }}
+    <table class="tbl">
+      <thead><tr><th>Entra group</th><th>Owner</th><th class="num">People synced</th></tr></thead>
+      <tbody>{% for g in graph_groups %}<tr><td class="mono">{{ g.group }}</td><td><span class="owner-tag">@{{ g.owner }}</span></td><td class="num mono">{{ g.members }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No groups mapped. Add <code>connectors.graph.group_map</code> to ownership.yaml.</td></tr>{% endfor %}</tbody>
+    </table>
+    {% if people %}
+    <details class="more"><summary class="link">{{ people|length }} people in the cache</summary>
+      <table class="tbl"><thead><tr><th>Person</th><th>Groups</th><th class="num">Findings routed</th></tr></thead><tbody>
+      {% for p in people %}<tr><td><b>{{ p.display_name }}</b><br><small class="mono muted">{{ p.upn or p.mail }}</small></td><td class="mono small">{{ p.groups|join(', ') }}</td><td class="num mono">{{ person_hits.get(p.upn or p.mail, 0) }}</td></tr>{% endfor %}
+      </tbody></table></details>
+    {% endif %}
+    {{ sync_button("graph", connectors.graph.mode) }}
+  </section>
+
+  <section class="card connector">
+    <div class="card-head">
+      <h2><span class="conn-logo conn-leanix">LX</span>LeanIX</h2>
+      {{ mode_badge(connectors.leanix.mode) }}
+    </div>
+    <p class="muted small">An asset whose tag ({% for k in cfg.connectors.leanix.app_tag_keys[:3] %}<code>{{ k }}</code>{{ ', ' if not loop.last }}{% endfor %}…), image name or repository matches an Application fact sheet gets that application's team. Rule 5, confidence 0.80.</p>
+    {{ run_line(connectors.leanix) }}
+    <table class="tbl">
+      <thead><tr><th>Application</th><th>Team → owner</th><th class="num">Findings</th></tr></thead>
+      <tbody>{% for r in apps %}<tr>
+        <td><b>{% if r.a.url.startswith('https://') %}<a class="plain" href="{{ r.a.url }}" target="_blank" rel="noopener noreferrer">{{ r.a.name }}</a>{% else %}{{ r.a.name }}{% endif %}</b><br><small class="mono muted">{{ r.a.aliases|join(', ')|short(48) }}</small></td>
+        <td class="small">{% if r.mapped %}{{ r.mapped[0] }} → <span class="owner-tag">@{{ r.mapped[1] }}</span>{% elif r.a.responsible %}<span class="muted">no team; responsible</span> <span class="mono">{{ r.a.responsible[0] }}</span>{% else %}<span class="tag-orange mono">unmapped</span>{% endif %}</td>
+        <td class="num mono">{{ r.findings }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No applications synced yet.</td></tr>{% endfor %}</tbody>
+    </table>
+    {{ sync_button("leanix", connectors.leanix.mode) }}
+  </section>
+</div>
+
+<div class="split">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("flag") }}Review queue</h2><a class="link" href="/ui/vulnerabilities?conf=review">All {{ icon("arrow") }}</a></div>
+    {% if review_rows %}
+    <ul class="list">
+      {% for f in review_rows %}
+      <li><a class="row-link" href="/ui/vulnerabilities/{{ f.id }}"><span class="row-main"><b>{{ (f.vuln_id ~ ' · ' ~ f.package) if f.kind == 'vuln' else f.title|short(70) }}</b>
+        <small class="mono muted">@{{ f.owner_slug }} · {{ f.owner_rule }} · {{ "%.2f"|format(f.owner_confidence) }} · {{ f.asset_name or f.asset_key|short(40) }}</small></span>{{ sev_badge(f.severity_id) }}</a></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty-note">{{ icon("check") }}Every open finding has a confident owner.</p>{% endif %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("flag") }}Manual overrides</h2></div>
+    {% if overrides %}
+    <table class="tbl"><thead><tr><th>Applies to</th><th>Owner</th><th>By</th><th>Reason</th></tr></thead><tbody>
+      {% for o in overrides %}<tr><td class="mono small">{{ o.match_type }}<br><span class="muted">{{ o.match_value|short(40) }}</span></td><td><span class="owner-tag">@{{ o.owner_slug }}</span></td><td class="small">{{ o.actor }}<br><span class="muted">{{ o.created_at|ago }}</span></td><td class="small">{{ o.reason or '—' }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="empty-note">No overrides. Set one from a finding's page.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

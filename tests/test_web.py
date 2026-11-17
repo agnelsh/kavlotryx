@@ -39,7 +39,7 @@ def admin(app):
 
 def test_redirects_to_login(app):
     c = TestClient(app)
-    r = c.get("/ui/findings", follow_redirects=False)
+    r = c.get("/ui/vulnerabilities", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("/ui/login")
     assert c.get("/", follow_redirects=False).headers["location"] == "/ui"
 
@@ -58,9 +58,16 @@ def test_cookie_is_hardened_and_holds_no_token(app):
     assert ADMIN not in cookie
 
 
-@pytest.mark.parametrize("path", ["/ui", "/ui/findings", "/ui/findings?tab=ocsf", "/ui/findings?conf=review",
-                                  "/ui/findings?q=openssl&kind=vuln&sev=4", "/ui/workitems",
-                                  "/ui/workitems?state=dispatched", "/ui/verify"])
+PAGES = ["/ui", "/ui?persona=analyst", "/ui?persona=team_lead", "/ui?persona=platform",
+         "/ui?persona=security_manager", "/ui?persona=change_manager", "/ui/vulnerabilities",
+         "/ui/vulnerabilities?conf=review", "/ui/vulnerabilities?q=openssl&kind=vuln&sev=4&sev=5",
+         "/ui/vulnerabilities?scanner=prowler&rule=tag&fix=no&ticket=yes&age=30&sort=first&dir=asc&size=25",
+         "/ui/vulnerabilities?prod=yes&status=&wi_state=dispatched&account=123456789012&artifact=pay",
+         "/ui/vulnerabilities/1", "/ui/vulnerabilities/1?tab=ocsf", "/ui/workitems",
+         "/ui/workitems?state=dispatched", "/ui/ownership", "/ui/scanners", "/ui/settings"]
+
+
+@pytest.mark.parametrize("path", PAGES)
 def test_pages_render(admin, path):
     r = admin.get(path)
     assert r.status_code == 200, r.text[:500]
@@ -81,7 +88,7 @@ def test_scanner_text_is_escaped(admin, day1):
                                                        b"<script>alert(1)</script>")
     day1.ingest("trivy", evil, scope="trivy:evil")
     day1.rebuild()
-    r = admin.get("/ui/findings?kind=config")
+    r = admin.get("/ui/vulnerabilities?kind=config")
     assert "<script>alert(1)</script>" not in r.text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in r.text
 
@@ -110,9 +117,10 @@ def test_actions_flash_and_dry_run(admin, tracker):
 
 
 def test_override_from_console(admin, day1):
-    page = admin.get("/ui/findings?conf=review").text
-    fid = int(re.search(r"/ui/findings/(\d+)/owner", page).group(1))
-    r = admin.post(f"/ui/findings/{fid}/owner", data={"csrf": csrf(page), "owner": "platform",
+    listing = admin.get("/ui/vulnerabilities?conf=review").text
+    fid = int(re.search(r'href="/ui/vulnerabilities/(\d+)"', listing).group(1))
+    page = admin.get(f"/ui/vulnerabilities/{fid}").text
+    r = admin.post(f"/ui/vulnerabilities/{fid}/owner", data={"csrf": csrf(page), "owner": "platform",
                                                      "match": "asset", "reason": "confirmed"},
                    follow_redirects=True)
     assert "Owner set to platform" in r.text
@@ -130,7 +138,7 @@ def test_viewer_cannot_write(app):
 
 
 def test_upload_from_console(admin):
-    token = csrf(admin.get("/ui/verify").text)
+    token = csrf(admin.get("/ui/scanners").text)
     files = {"file": ("t.json", scan("trivy-payments-api-1.4.1.json"), "application/json")}
     r = admin.post("/ui/scans", data={"csrf": token, "scanner": "trivy"}, files=files, follow_redirects=True)
     assert "Scan 5 (trivy" in r.text

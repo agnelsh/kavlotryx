@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session
 
 from kavlotryx.config import OwnershipConfig, PolicyConfig
 from kavlotryx.core.fingerprint import short_hash
-from kavlotryx.core.ownership import OwnershipResolver
-from kavlotryx.db import Finding, OwnerOverride, WorkItem, utcnow
+from kavlotryx.core.ownership import resolver_for
+from kavlotryx.db import Finding, WorkItem, utcnow
 
 PRIORITIES = ["Informational", "Low", "Medium", "High", "Critical"]
 
@@ -85,8 +85,7 @@ def rebuild(
     policy: PolicyConfig,
     config_dir: Path,
 ) -> RebuildReport:
-    overrides = list(session.scalars(select(OwnerOverride)))
-    resolver = OwnershipResolver(cfg, policy, config_dir, overrides)
+    resolver = resolver_for(session, cfg, policy, config_dir)
     open_findings = list(session.scalars(select(Finding).where(Finding.status == "open")))
 
     groups: dict[str, tuple[str, str, dict[str, str], list[Finding]]] = {}

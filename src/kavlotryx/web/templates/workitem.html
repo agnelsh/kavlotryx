@@ -5,7 +5,7 @@
 {% set left = (w.due_date - today).days if w.due_date else none %}
 <section class="head">
   <div>
-    <div class="crumbs mono"><a href="/ui/workitems">Work items &amp; Jira</a> / <b>{{ w.key }}</b></div>
+    <div class="crumbs mono"><a href="/ui/vulnerabilities">Vulnerabilities</a> / <a href="/ui/workitems">Work items</a> / <b>{{ w.key }}</b></div>
     <h1 class="mono-title">{{ w.key[:9]|upper }} <span class="muted">/</span> {{ w.title }}</h1>
     <div class="head-badges">
       <span class="prio prio-{{ w.priority|lower }} prio-box"><i class="dot"></i>{{ w.priority|upper }}</span>
@@ -16,7 +16,7 @@
   </div>
   <div class="head-actions">
     {% if w.ticket_url.startswith('https://') %}<a class="btn btn-outline" href="{{ w.ticket_url }}" target="_blank" rel="noopener noreferrer">{{ icon("external") }}Open {{ w.ticket_key }}</a>{% endif %}
-    {% if lead %}<a class="btn btn-outline" href="/ui/findings?f={{ lead.id }}&status=">{{ icon("fingerprint") }}Owner trace</a>{% endif %}
+    {% if lead %}<a class="btn btn-outline" href="/ui/vulnerabilities/{{ lead.id }}">{{ icon("fingerprint") }}Owner trace</a>{% endif %}
     {% if can_write %}<form method="post" action="/ui/actions/verify"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-primary">{{ icon("verified") }}Re-verify</button></form>{% endif %}
   </div>
 </section>
@@ -62,7 +62,7 @@
       <tbody>
       {% for m in members %}
       <tr class="{{ 'row-dim' if m.status == 'fixed' }}">
-        <td><a class="mono strong plain" href="/ui/findings?f={{ m.id }}&status=">{{ m.vuln_id or m.rule_key }}</a><br><small class="muted">{{ m.title|short(70) }}</small></td>
+        <td><a class="mono strong plain" href="/ui/vulnerabilities/{{ m.id }}">{{ m.vuln_id or m.rule_key }}</a><br><small class="muted">{{ m.title|short(70) }}</small></td>
         <td>{{ sev_badge(m.severity_id) }}</td>
         <td class="mono small">{% if m.kind == 'vuln' %}{{ m.package }} {{ m.installed_version }}<br><span class="t-ok">→ {{ m.fixed_version or 'no fix' }}</span>{% else %}<span class="trunc-block" title="{{ m.asset_key }}">{{ m.asset_name or m.asset_key }}</span>{% endif %}</td>
         <td class="mono small">{{ m.owner_rule }}<br><span class="muted">{{ "%.2f"|format(m.owner_confidence) }}</span></td>

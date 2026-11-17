@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from kavlotryx.db import AuditEvent, Finding, FindingSource, Observation, Scan, WorkItem, utcnow
@@ -22,12 +21,16 @@ RULE_LADDER = [
     {"key": "override", "n": 1, "tier": "Absolute", "name": "Manual override", "conf": "1.0",
      "desc": "Pinned by a person through the console, CLI or API.", "tone": "violet"},
     {"key": "tag", "n": 2, "tier": "Infra", "name": "Cloud ownership tag", "conf": "0.90",
-     "desc": "Resource tag such as team or owner.", "tone": "amber"},
-    {"key": "codeowners", "n": 3, "tier": "Source", "name": "Git CODEOWNERS", "conf": "0.85",
+     "desc": "Resource tag that names a team, such as team or owner.", "tone": "amber"},
+    {"key": "directory", "n": 3, "tier": "Identity", "name": "Microsoft Graph person", "conf": "0.80",
+     "desc": "A tag names a person; their Entra group names the team.", "tone": "violet"},
+    {"key": "codeowners", "n": 4, "tier": "Source", "name": "Git CODEOWNERS", "conf": "0.85",
      "desc": "Last matching CODEOWNERS line for the file or Dockerfile.", "tone": "ok"},
-    {"key": "pattern", "n": 4, "tier": "Glob", "name": "ownership.yaml pattern", "conf": "0.75",
-     "desc": "Name, asset or rule glob from the config file.", "tone": "orange"},
-    {"key": "default", "n": 5, "tier": "Fallback", "name": "Account or registry default", "conf": "0.50",
+    {"key": "leanix", "n": 5, "tier": "CMDB", "name": "LeanIX application", "conf": "0.80",
+     "desc": "The asset belongs to a LeanIX application; its team owns it.", "tone": "ok"},
+    {"key": "pattern", "n": 6, "tier": "Glob", "name": "ownership.yaml pattern", "conf": "0.75",
+     "desc": "Name, asset, type or rule glob from the config file.", "tone": "orange"},
+    {"key": "default", "n": 7, "tier": "Fallback", "name": "Account or registry default", "conf": "0.50",
      "desc": "No stronger evidence. Below the limit: needs review.", "tone": "warn"},
 ]
 
@@ -49,6 +52,9 @@ def rule_family(rule: str) -> str:
         return ""
     head = rule.split(":", 1)[0]
     return "default" if head in ("default", "fallback") else head
+
+
+RULE_FAMILIES = [r["key"] for r in RULE_LADDER] + ["fallback"]
 
 
 def pct(a: int, b: int) -> float:
@@ -76,116 +82,7 @@ def rule_ladder(s: Session) -> tuple[list[dict[str, Any]], int, int]:
     return ladder, total, review
 
 
-# -- overview -----------------------------------------------------------------
-
-
-def overview(s: Session, summary: dict[str, Any]) -> dict[str, Any]:
-    today = utcnow().date()
-    items = s.scalars(select(WorkItem)).all()
-    observations = s.scalar(select(func.count(Observation.id))) or 0
-    findings_total = s.scalar(select(func.count(Finding.id))) or 0
-    attention = []
-    for w in items:
-        reason = ""
-        if w.state == "pending_verification":
-            reason = "Ticket is Done but scans still report findings"
-        elif w.state == "reopened":
-            reason = "A fixed finding came back"
-        elif w.due_date and w.due_date < today and w.state != "verified":
-            reason = f"Overdue since {w.due_date.isoformat()}"
-        elif w.needs_review and w.state not in ("verified", "superseded"):
-            reason = "Owner below the confidence limit"
-        if reason:
-            attention.append({"w": w, "reason": reason})
-    scans = s.scalars(select(Scan).order_by(Scan.id.desc()).limit(6)).all()
-    ticketed = sum(1 for w in items if w.ticket_key)
-    stages = [
-        ("Observations", observations, "raw rows from scanners"),
-        ("Findings", findings_total, "after fingerprint dedupe"),
-        ("Work items", len(items), "root cause + owner"),
-        ("Tickets", ticketed, "one per work item"),
-        ("Verified", sum(1 for w in items if w.state == "verified"), "closed by a clean scan"),
-    ]
-    return {"attention": attention[:12], "scans": scans, "stages": stages,
-            "items_active": sum(1 for w in items if w.state not in ("verified", "superseded")),
-            "ticketed": ticketed}
-
-
 # -- findings -----------------------------------------------------------------
-
-
-@dataclass
-class FindingFilter:
-    q: str = ""
-    kind: str = ""
-    sev: int = 0
-    status: str = "open"
-    owner: str = ""
-    conf: str = ""  # "" | "ok" | "review"
-    page: int = 1
-
-    def query_string(self, **override: Any) -> str:
-        from urllib.parse import urlencode
-
-        d = {"q": self.q, "kind": self.kind, "sev": self.sev or "", "status": self.status,
-             "owner": self.owner, "conf": self.conf, "page": self.page}
-        d.update(override)
-        return urlencode({k: v for k, v in d.items() if v not in ("", None, 0)})
-
-    def chips(self) -> list[tuple[str, str]]:
-        out = []
-        if self.q:
-            out.append((f"search: {self.q}", self.query_string(q="", page=1)))
-        if self.kind:
-            out.append((f"kind: {self.kind}", self.query_string(kind="", page=1)))
-        if self.sev:
-            out.append((f"severity ≥ {sev_name(self.sev)}", self.query_string(sev="", page=1)))
-        if self.owner:
-            out.append((f"owner: {self.owner}", self.query_string(owner="", page=1)))
-        if self.conf:
-            out.append((f"confidence: {'needs review' if self.conf == 'review' else '≥ limit'}",
-                        self.query_string(conf="", page=1)))
-        if self.status != "open":
-            out.append((f"status: {self.status or 'any'}", self.query_string(status="open", page=1)))
-        return out
-
-
-def findings_page(s: Session, f: FindingFilter) -> dict[str, Any]:
-    q = select(Finding)
-    if f.status:
-        q = q.where(Finding.status == f.status)
-    if f.kind:
-        q = q.where(Finding.kind == f.kind)
-    if f.sev:
-        q = q.where(Finding.severity_id >= f.sev)
-    if f.owner:
-        q = q.where(Finding.owner_slug == f.owner)
-    if f.conf == "review":
-        q = q.where(Finding.needs_review.is_(True))
-    elif f.conf == "ok":
-        q = q.where(Finding.needs_review.is_(False))
-    if f.q:
-        like = f"%{f.q.strip()}%"
-        q = q.where(or_(Finding.vuln_id.ilike(like), Finding.package.ilike(like),
-                        Finding.asset_key.ilike(like), Finding.rule_key.ilike(like),
-                        Finding.fingerprint.ilike(like), Finding.title.ilike(like),
-                        Finding.owner_slug.ilike(like), Finding.artifact.ilike(like)))
-    total = s.scalar(select(func.count()).select_from(q.subquery())) or 0
-    pages = max(1, -(-total // PAGE_SIZE))
-    page = min(max(1, f.page), pages)
-    rows = s.scalars(q.order_by(Finding.severity_id.desc(), Finding.id)
-                     .limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE)).all()
-    ids = [r.id for r in rows]
-    src: dict[int, list[str]] = {}
-    if ids:
-        for fid, scanner in s.execute(select(FindingSource.finding_id, FindingSource.scanner)
-                                      .where(FindingSource.finding_id.in_(ids))):
-            src.setdefault(fid, []).append(scanner)
-    items = {w.key: w for w in s.scalars(select(WorkItem).where(
-        WorkItem.key.in_({r.work_item_key for r in rows if r.work_item_key})))} if rows else {}
-    owners = [o for (o,) in s.execute(select(Finding.owner_slug).distinct()) if o]
-    return {"rows": rows, "sources": src, "items": items, "total": total, "page": page,
-            "pages": pages, "owners": sorted(owners)}
 
 
 def finding_detail(s: Session, fid: int) -> dict[str, Any] | None:
@@ -282,23 +179,3 @@ def workitem_detail(s: Session, key: str) -> dict[str, Any] | None:
         "vulns": len({m.vuln_id for m in members if m.vuln_id}),
         "today": utcnow().date(),
     }
-
-
-# -- verification & ingest ----------------------------------------------------
-
-
-def verify_page(s: Session) -> dict[str, Any]:
-    scans = s.scalars(select(Scan).order_by(Scan.id.desc()).limit(50)).all()
-    events = s.scalars(select(AuditEvent).order_by(AuditEvent.id.desc()).limit(40)).all()
-    proofs = s.scalars(select(AuditEvent).where(AuditEvent.action.in_(
-        ["verify.verified", "verify.pending", "verify.reopened", "verify.superseded"]))
-        .order_by(AuditEvent.id.desc()).limit(12)).all()
-    items = {w.key: w for w in s.scalars(select(WorkItem).where(
-        WorkItem.key.in_({e.target for e in proofs})))} if proofs else {}
-    state = Counter(w.state for w in s.scalars(select(WorkItem)))
-    obs_total = s.scalar(select(func.count(Observation.id))) or 0
-    fixed = s.scalar(select(func.count(Finding.id)).where(Finding.status == "fixed")) or 0
-    reopened = s.scalar(select(func.count(Finding.id)).where(Finding.reopen_count > 0)) or 0
-    return {"scans": scans, "events": events, "proofs": proofs, "items": items, "state": state,
-            "obs_total": obs_total, "fixed": fixed, "reopened": reopened,
-            "scan_total": s.scalar(select(func.count(Scan.id))) or 0}

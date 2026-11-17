@@ -1,0 +1,17 @@
+{
+  "_comment": "Made-up LeanIX Application fact sheets for the sample demo (KAVLO_LEANIX_SNAPSHOT). Same shape the live sync stores.",
+  "applications": [
+    {"id": "a1000000-0000-4000-8000-000000000001", "name": "Argo CD", "aliases": ["argocd"],
+     "teams": ["Cloud Platform Team"], "responsible": ["sam.okafor@example.com"]},
+    {"id": "a1000000-0000-4000-8000-000000000002", "name": "Wiz Sensor", "aliases": ["wiz-sensor", "wiz-unified-helm"],
+     "teams": [], "responsible": ["sam.okafor@example.com"]},
+    {"id": "a1000000-0000-4000-8000-000000000003", "name": "Storefront Nginx", "aliases": ["sb-nginx-aks"],
+     "teams": ["Storefront"], "responsible": ["jd@example.com"]},
+    {"id": "a1000000-0000-4000-8000-000000000004", "name": "Checkout Service", "aliases": ["checkout-service"],
+     "teams": ["Storefront"], "responsible": ["jd@example.com"]},
+    {"id": "a1000000-0000-4000-8000-000000000005", "name": "TeamDojo", "aliases": ["teamdojo"],
+     "repos": ["github.com/example/teamdojo"], "teams": ["Application Team"], "responsible": []},
+    {"id": "a1000000-0000-4000-8000-000000000006", "name": "Finance Reporting", "aliases": ["finance-reporting"],
+     "teams": ["Finance IT"], "responsible": ["lee.chen@example.com"]}
+  ]
+}

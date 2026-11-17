@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, state_badge %}
+{% block title %}Scanners{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Scanners · <span class="t-violet">same scanner, same scope</span></div>
+    <h1>Scanners and scan status</h1>
+    <p class="lede">Each scanner reports on scopes: an account, an image, a repository. A fix is proven only by a later scan of the same scope, so a stale scope also means unproven fixes.</p>
+  </div>
+  <div class="head-actions">
+    {% if can_ingest %}<a class="btn btn-primary" href="#upload">{{ icon("upload") }}Upload scanner output</a>{% endif %}
+    {% if can_write %}<form method="post" action="/ui/actions/verify"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline">{{ icon("verified") }}Run verifier</button></form>{% endif %}
+  </div>
+</section>
+
+<section class="kpis">
+  <div class="kpi"><span class="kpi-label">Adapters</span><b class="kpi-value">{{ cards|length }}</b><span class="kpi-note">installed plug-ins</span></div>
+  <div class="kpi"><span class="kpi-label">Scopes tracked</span><b class="kpi-value">{{ scopes|length }}</b><span class="kpi-note">scanner + scope pairs</span></div>
+  <div class="kpi {{ 'kpi-warn' if stale }}"><span class="kpi-label">Stale scopes</span><b class="kpi-value {{ 't-amber' if stale }}">{{ stale }}</b><span class="kpi-note">no scan for {{ stale_hours }}h</span></div>
+  <div class="kpi"><span class="kpi-label">Scans ingested</span><b class="kpi-value">{{ scan_total }}</b><span class="kpi-note">{{ obs_total }} raw rows kept</span></div>
+  <div class="kpi kpi-ok"><span class="kpi-label">Verifier decisions</span><b class="kpi-value t-ok">{{ proofs|length }}</b><span class="kpi-note">latest, below</span></div>
+</section>
+
+<section class="scanner-cards">
+  {% for c in cards %}
+  <a class="card scanner-card st-{{ c.status }}" href="/ui/vulnerabilities?scanner={{ c.name }}">
+    <div class="card-head"><h3 class="mono"><i class="dot {{ {'fresh': 'dot-ok', 'stale': 'dot-amber'}.get(c.status, '') }}"></i>{{ c.name }}</h3>
+      <span class="tag-{{ {'fresh': 'ok', 'stale': 'orange'}.get(c.status, 'dim') }} mono">{{ c.status }}</span></div>
+    <p class="muted small">{{ c.doc }}</p>
+    <dl class="kv mono small"><dt>scopes</dt><dd>{{ c.scopes }}{% if c.stale %} ({{ c.stale }} stale){% endif %}</dd><dt>scans</dt><dd>{{ c.scans }}</dd>
+      <dt>open findings</dt><dd>{{ c.open }}</dd><dt>last scan</dt><dd>{{ (c.last|ago) if c.last else 'never' }}</dd></dl>
+  </a>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("scan") }}Scope status</h2><span class="muted small mono">stale after {{ stale_hours }}h · change in Settings</span></div>
+  {% if scopes %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Scanner</th><th>Scope</th><th>Last scan</th><th class="num">Rows</th><th class="num">Open findings</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in scopes %}
+    <tr><td class="mono strong">{{ r.scanner }}</td><td class="mono small trunc" title="{{ r.scope }}">{{ r.scope }}</td>
+      <td class="small">#{{ r.scan.id }} · {{ r.scan.received_at|ago }}</td><td class="num mono">{{ r.scan.record_count }}</td>
+      <td class="num mono">{{ r.open }}</td>
+      <td>{% if r.stale %}<span class="tag-orange mono">stale {{ r.age_h|hours }}</span>{% else %}<span class="tag-ok mono">fresh</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+  {% else %}<p class="empty-note">No scans yet.</p>{% endif %}
+</section>
+
+<div class="split split-7-5">
+  <section class="card">
+    <div class="card-head"><h2><i class="dot dot-amber"></i>Scan history</h2><span class="muted mono">latest {{ scans|length }}</span></div>
+    {% if scans %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Run</th><th>Scope</th><th class="num">Rows</th><th class="num">New</th><th class="num">Fixed</th><th class="num">Back</th><th>Received</th></tr></thead>
+      <tbody>
+      {% for s in scans %}
+      <tr><td class="mono"><b class="t-amber">#{{ s.id }}</b><br><small class="muted">{{ s.scanner }}</small></td>
+        <td class="mono small trunc" title="{{ s.scope }}">{{ s.scope }}</td>
+        <td class="num mono">{{ s.record_count }}{% if s.skipped_count %}<br><small class="t-amber">{{ s.skipped_count }} skipped</small>{% endif %}</td>
+        <td class="num mono">{{ s.new_count }}</td><td class="num mono t-ok">{{ s.fixed_count }}</td>
+        <td class="num mono {{ 't-crit' if s.reopened_count }}">{{ s.reopened_count }}</td><td class="muted small">{{ s.received_at|ago }}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}<p class="empty-note">No scans yet.</p>{% endif %}
+    <div class="snippet mono"><span class="t-amber">$</span> <span>curl -H "Authorization: Bearer $KAVLO_TOKEN" -F scanner=trivy -F file=@trivy.json {{ base_url }}/api/v1/scans</span>
+      <button class="link" type="button" data-copy-text='curl -H "Authorization: Bearer $KAVLO_TOKEN" -F scanner=trivy -F file=@trivy.json {{ base_url }}/api/v1/scans'>{{ icon("copy") }}Copy</button></div>
+  </section>
+  <div class="stack">
+    {% if can_ingest %}
+    <section class="card" id="upload">
+      <div class="card-head"><h2>{{ icon("upload") }}Upload scanner output</h2></div>
+      <form class="form" method="post" action="/ui/scans" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field"><span>Scanner</span><select name="scanner">{% for c in cards %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}</select></label>
+        <label class="field"><span>Scope <small class="muted">needed for empty, directory and IaC scans</small></span><input name="scope" placeholder="e.g. trivy:checkout-service" maxlength="500"></label>
+        <label class="field"><span>File <small class="muted">JSON, JSON Lines or Wiz CSV</small></span><input type="file" name="file" required accept=".json,.jsonl,.csv,application/json,text/csv"></label>
+        <button class="btn btn-primary btn-block">{{ icon("upload") }}Ingest</button>
+      </form>
+    </section>
+    {% endif %}
+    <section class="card">
+      <div class="card-head"><h2>{{ icon("verified") }}Verifier decisions</h2></div>
+      {% if proofs %}
+      <ul class="proofs">
+        {% for e in proofs %}{% set w = proof_items.get(e.target) %}{% set kind = e.action.split('.')[1] %}
+        <li class="proof proof-{{ kind }}">
+          <span class="proof-ic">{{ icon("check" if kind == 'verified' else ("refresh" if kind == 'reopened' else "clock")) }}</span>
+          <div class="row-main"><span><b class="mono">{{ e.detail.ticket or e.target }}</b> <span class="tag-{{ {'verified': 'ok', 'reopened': 'crit', 'pending': 'amber'}.get(kind, 'dim') }} mono caps">{{ {'verified': 'closed on scan proof', 'reopened': 'reopened', 'pending': 'held: not fixed', 'superseded': 'superseded'}.get(kind, kind) }}</span></span>
+            <small class="muted">{% if w %}<a class="link" href="/ui/workitems/{{ w.key }}">{{ w.title|short(70) }}</a>{% else %}{{ e.target }}{% endif %} · {{ e.at|ago }}</small></div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty-note">No verifier decisions yet.</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

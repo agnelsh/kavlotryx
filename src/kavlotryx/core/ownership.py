@@ -13,13 +13,18 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from kavlotryx.config import OwnershipConfig, PolicyConfig
 from kavlotryx.core import codeowners
-from kavlotryx.db import Finding, OwnerOverride
+from kavlotryx.db import CatalogApp, DirectoryPerson, Finding, OwnerOverride
 
 CONF_OVERRIDE = 1.0
 CONF_TAG = 0.9
+CONF_DIRECTORY = 0.8
 CONF_CODEOWNERS = 0.85
+CONF_CATALOG = 0.8
 CONF_PATTERN = 0.75
 CONF_DEFAULT = 0.5
 CONF_FALLBACK = 0.0
@@ -61,6 +66,8 @@ class OwnershipResolver:
         policy: PolicyConfig,
         config_dir: Path,
         overrides: list[OwnerOverride] | None = None,
+        people: list[DirectoryPerson] | None = None,
+        apps: list[CatalogApp] | None = None,
     ) -> None:
         self.cfg = cfg
         self.policy = policy
@@ -79,6 +86,21 @@ class OwnershipResolver:
             except OSError:
                 lines = []  # FR-EN-07: a missing file is missing data, not an error
             self.codeowners[src.repo.lower()] = (path, lines, src.team_map)
+        # Directory (Microsoft Graph) and catalog (LeanIX) caches, filled by a connector sync.
+        self.people: dict[str, DirectoryPerson] = {}
+        for p in people or []:
+            for k in (p.upn, p.mail, p.nickname):
+                if k:
+                    self.people.setdefault(k.lower(), p)
+        self.group_map = {k.lower(): v for k, v in cfg.connectors.graph.group_map.items()}
+        self.apps: dict[str, CatalogApp] = {}
+        for a in apps or []:
+            for k in [a.id, a.name, *a.aliases, *a.external_ids]:
+                if k:
+                    self.apps.setdefault(k.strip().lower(), a)
+        self.app_repos = {r: a for a in apps or [] for r in a.repos if r}
+        self.team_map = {k.lower(): v for k, v in cfg.connectors.leanix.team_map.items()}
+        self.has_people, self.has_apps = bool(people), bool(apps)
 
     # -- helpers --------------------------------------------------------------
 
@@ -110,7 +132,9 @@ class OwnershipResolver:
         a = (
             self._override(f, trace)
             or self._tags(f, trace)
+            or self._directory(f, trace)
             or self._codeowners(f, trace)
+            or self._catalog(f, trace)
             or self._patterns(f, trace)
             or self._defaults(f, trace)
         )
@@ -150,6 +174,87 @@ class OwnershipResolver:
             trace.append(RuleTrace(f"tag:{key}", False, f"tag {tag_key}={value} is not a known owner"))
         if not any(t.rule.startswith("tag:") for t in trace):
             trace.append(RuleTrace("tag", False, f"none of the tag keys {self.cfg.tag_keys} present"))
+        return None
+
+    def _person_team(self, person: DirectoryPerson) -> tuple[str, str] | None:
+        for g in person.groups:
+            owner = self.group_map.get(g.lower())
+            if owner in self.known:
+                return owner, g
+        return None
+
+    def _directory(self, f: Finding, trace: list[RuleTrace]) -> Assignment | None:
+        if not self.has_people:
+            trace.append(RuleTrace("directory", False, "Microsoft Graph not synced"))
+            return None
+        lower = {k.lower(): (k, v) for k, v in (f.tags or {}).items()}
+        for key in self.cfg.connectors.graph.person_tag_keys:
+            hit = lower.get(key.lower())
+            if hit is None or not str(hit[1]).strip():
+                continue
+            tag_key, value = hit
+            person = self.people.get(str(value).strip().lower())
+            if person is None:
+                trace.append(RuleTrace("directory", False, f"tag {tag_key}={value} is not a person in Entra ID"))
+                continue
+            team = self._person_team(person)
+            if team is None:
+                trace.append(RuleTrace("directory", False,
+                                       f"{person.upn or person.display_name} is in no mapped Entra group"))
+                continue
+            owner, group = team
+            trace.append(RuleTrace("directory", True,
+                                   f"tag {tag_key}={value} → {person.upn or person.mail} → group {group}"))
+            return Assignment(owner, "directory:graph", "microsoft_graph", CONF_DIRECTORY, {
+                "tag_key": tag_key, "tag_value": value, "person": person.upn or person.mail,
+                "name": person.display_name, "group": group})
+        if not any(t.rule == "directory" for t in trace):
+            trace.append(RuleTrace("directory", False, "no person tag on the asset"))
+        return None
+
+    def _catalog(self, f: Finding, trace: list[RuleTrace]) -> Assignment | None:
+        if not self.has_apps:
+            trace.append(RuleTrace("leanix", False, "LeanIX not synced"))
+            return None
+        lcfg = self.cfg.connectors.leanix
+        candidates: list[tuple[str, str]] = []
+        lower = {k.lower(): (k, v) for k, v in (f.tags or {}).items()}
+        for key in lcfg.app_tag_keys:
+            hit = lower.get(key.lower())
+            if hit and str(hit[1]).strip():
+                candidates.append((f"tag {hit[0]}={hit[1]}", str(hit[1])))
+        if lcfg.match_artifact_names:
+            for label, v in (("artifact", f.artifact), ("resource", f.asset_name)):
+                short = (v or "").split("@")[0].rsplit("/", 1)[-1].split(":")[0]
+                if short:
+                    candidates.append((f"{label} {short}", short))
+        app = None
+        how = ""
+        repo, _ = self._repo_for(f)
+        if repo and repo in self.app_repos:
+            app, how = self.app_repos[repo], f"repository {repo}"
+        for label, value in candidates:
+            if app is None and value.strip().lower() in self.apps:
+                app, how = self.apps[value.strip().lower()], label
+        if app is None:
+            trace.append(RuleTrace("leanix", False, "asset matches no LeanIX application"))
+            return None
+        ev: dict[str, Any] = {"application": app.name, "app_id": app.id, "matched_by": how}
+        for t in app.teams:
+            owner = self.team_map.get(t.lower()) or self._owner_from_value(t)
+            if owner:
+                trace.append(RuleTrace("leanix", True, f"{how} → application {app.name} → team {t}"))
+                return Assignment(owner, "leanix:team", "leanix", CONF_CATALOG, {**ev, "team": t})
+        for email in app.responsible:
+            person = self.people.get(email)
+            team = self._person_team(person) if person else None
+            if team:
+                trace.append(RuleTrace("leanix", True, f"{how} → application {app.name} → responsible "
+                                                       f"{email} → group {team[1]}"))
+                return Assignment(team[0], "leanix:responsible", "leanix+graph", CONF_CATALOG,
+                                  {**ev, "responsible": email, "group": team[1]})
+        trace.append(RuleTrace("leanix", False, f"application {app.name} ({how}) has no mapped team or "
+                                                "responsible person"))
         return None
 
     def _codeowners(self, f: Finding, trace: list[RuleTrace]) -> Assignment | None:
@@ -192,10 +297,13 @@ class OwnershipResolver:
                 checks.append(fnmatchcase(f.asset_name, p.name) or fnmatchcase(f.artifact, p.name))
             if p.rule:
                 checks.append(fnmatchcase(f.rule_key, p.rule))
+            if p.type:
+                checks.append(fnmatchcase(f.asset_type, p.type))
             if checks and all(checks) and p.owner in self.known:
                 trace.append(RuleTrace(f"pattern:{p.id}", True, "pattern matched"))
                 return Assignment(p.owner, f"pattern:{p.id}", "config", CONF_PATTERN,
-                                  {"pattern": p.id, "asset": p.asset, "name": p.name, "rule": p.rule})
+                                  {k: v for k, v in {"pattern": p.id, "asset": p.asset, "name": p.name,
+                                                     "rule": p.rule, "type": p.type}.items() if v})
         trace.append(RuleTrace("pattern", False, f"{len(self.cfg.patterns)} pattern rules, none matched"))
         return None
 
@@ -211,3 +319,11 @@ class OwnershipResolver:
                 return Assignment(owner, "default:registry", "config", CONF_DEFAULT, {"registry": glob})
         trace.append(RuleTrace("default", False, "no account or registry default"))
         return None
+
+
+def resolver_for(session: Session, cfg: OwnershipConfig, policy: PolicyConfig, config_dir: Path) -> OwnershipResolver:
+    """A resolver with the overrides and connector caches from the database."""
+    return OwnershipResolver(cfg, policy, config_dir,
+                             overrides=list(session.scalars(select(OwnerOverride))),
+                             people=list(session.scalars(select(DirectoryPerson))),
+                             apps=list(session.scalars(select(CatalogApp))))

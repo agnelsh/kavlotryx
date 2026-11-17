@@ -1,0 +1,75 @@
+{% from "_icons.html" import icon, sev_badge, state_badge %}
+{% macro finding_list(rows, empty) %}
+{% if rows %}
+<ul class="list">
+  {% for f in rows %}
+  <li><a class="row-link" href="/ui/vulnerabilities/{{ f.id }}">
+    <span class="row-main"><b>{{ f.vuln_id ~ ' · ' ~ f.package if f.kind == 'vuln' else f.title|short(80) }}</b>
+      <small class="muted mono">@{{ f.owner_slug }} · {{ f.owner_rule }} · {{ "%.2f"|format(f.owner_confidence) }} · {{ f.first_seen|ago }}</small></span>
+    {{ sev_badge(f.severity_id) }}</a></li>
+  {% endfor %}
+</ul>
+{% elif empty %}<p class="empty-note">{{ icon("check") }}{{ empty }}</p>{% endif %}
+{% endmacro %}
+
+{% macro item_table(rows, open_counts, today, empty) %}
+{% if rows %}
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Work item</th><th>Title</th><th>Ticket &amp; state</th><th class="num">Open</th><th>Priority &amp; due</th></tr></thead>
+  <tbody>
+  {% for w in rows %}{% set left = (w.due_date - today).days if w.due_date else none %}
+  <tr><td class="mono"><a class="t-amber strong" href="/ui/workitems/{{ w.key }}">{{ w.key[:9]|upper }}</a><br><small class="muted">@{{ w.owner_slug }}</small></td>
+    <td><a class="plain strong" href="/ui/workitems/{{ w.key }}">{{ w.title|short(110) }}</a></td>
+    <td>{% if w.ticket_key %}<span class="mono strong">{{ w.ticket_key }}</span> {% endif %}{{ state_badge(w.state) }}</td>
+    <td class="num mono">{{ open_counts.get(w.key, 0) }}</td>
+    <td><span class="prio prio-{{ w.priority|lower }}"><i class="dot"></i>{{ w.priority }}{% if left is not none %} · {{ 'overdue ' ~ (-left) ~ 'd' if left < 0 else 'due ' ~ left ~ 'd' }}{% endif %}</span></td></tr>
+  {% endfor %}
+  </tbody></table></div>
+{% else %}<p class="empty-note">{{ icon("check") }}{{ empty }}</p>{% endif %}
+{% endmacro %}
+
+{% macro sel(label, name, value, options) %}
+<label class="sel"><span>{{ label }}</span><select name="{{ name }}">{% for v, l in options %}<option value="{{ v }}" {{ 'selected' if value == v }}>{{ l }}</option>{% endfor %}</select></label>
+{% endmacro %}
+
+{% macro facet_box(title, rows, key, is_sev=false) %}
+<div class="facet">
+  <h3 class="caps mono small">{{ title }}</h3>
+  <ul>
+    {% for value, n in rows if is_sev or value not in ('', none) %}
+    {% set label = (value|sev if is_sev else value) %}
+    {% if is_sev %}{% set href = flt.toggle_sev(value) %}{% else %}{% set href = flt.qs(**{key: value, 'page': 1}) %}{% endif %}
+    {% set on = (value in flt.sev) if is_sev else (flt[key] != '' and flt[key] == value) %}
+    <li><a class="{{ 'on' if on }}" href="/ui/vulnerabilities?{{ href }}"><span class="{{ 'mono' if not is_sev }}">{{ label|short(26) }}</span><b class="mono">{{ n }}</b></a></li>
+    {% else %}<li class="muted small">none</li>{% endfor %}
+  </ul>
+</div>
+{% endmacro %}
+
+{% macro vuln_tabs(active) %}
+<nav class="tabs tabs-lg page-tabs" aria-label="Vulnerabilities">
+  <a class="{{ 'on' if active == 'findings' }}" href="/ui/vulnerabilities">{{ icon("bug") }}Findings</a>
+  <a class="{{ 'on' if active == 'items' }}" href="/ui/workitems">{{ icon("ticket") }}Work items &amp; tickets</a>
+</nav>
+{% endmacro %}
+
+{% macro run_line(c) %}
+<div class="inset run-line mono small">
+  {% if c.run %}
+  <span><i class="dot {{ 'dot-ok' if c.run.status == 'ok' else 'dot-crit' }}"></i>{{ 'Synced' if c.run.status == 'ok' else 'Failed' }} {{ c.run.finished_at|ago }} · {{ c.run.mode }} · by {{ c.run.actor }}</span>
+  <span>{% for k, v in c.run.counts.items() %}{{ k }} {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</span>
+  {% if c.run.error %}<span class="t-crit">{{ c.run.error|short(200) }}</span>{% endif %}
+  {% else %}<span class="muted">Never synced.</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro sync_button(name, mode) %}
+{% if is_admin and mode != 'off' %}
+<form method="post" action="/ui/connectors/{{ name }}/sync"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline btn-block">{{ icon("sync") }}Sync now and rebuild owners</button></form>
+{% elif mode == 'off' %}<p class="muted small">Not configured. See <a class="link" href="/ui/settings#connectors">Settings</a>.</p>{% endif %}
+{% endmacro %}
+
+{% macro field(label, name, type, value, help, attrs="") %}
+<label class="field"><span>{{ label }} <small class="src">{{ sources[name] }}</small></span>
+  <input type="{{ type }}" name="{{ name }}" value="{{ value }}" {{ attrs|safe }}><small class="muted">{{ help }}</small></label>
+{% endmacro %}

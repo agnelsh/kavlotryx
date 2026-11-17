@@ -24,7 +24,7 @@
     <div><span>Coverage</span><b class="t-ok">{{ (metrics.assignment_coverage_pct ~ '%') if metrics.assignment_coverage_pct is not none else '—' }}</b></div>
   </div>
   <nav class="nav">
-    {%- for href, ic, label in [("/ui", "dashboard", "Remediation overview"), ("/ui/findings", "fingerprint", "Findings & ownership"), ("/ui/workitems", "sync", "Work items & Jira"), ("/ui/verify", "verified", "Verification & ingest")] %}
+    {%- for href, ic, label in [("/ui", "dashboard", "Dashboard"), ("/ui/vulnerabilities", "bug", "Vulnerabilities"), ("/ui/ownership", "users", "Ownership"), ("/ui/scanners", "scan", "Scanners"), ("/ui/settings", "gear", "Settings")] %}
     {%- set active = (path == href) or (href != "/ui" and path.startswith(href)) %}
     <a href="{{ href }}" class="{{ 'active' if active }}" {% if active %}aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
     {%- endfor %}
@@ -41,7 +41,7 @@
       {% if auth_off %}<span class="chip chip-warn">{{ icon("warning") }}auth off (local)</span>{% endif %}
     </div>
     <div class="top-right">
-      <form class="search" action="/ui/findings" method="get" role="search">
+      <form class="search" action="/ui/vulnerabilities" method="get" role="search">
         {{ icon("search") }}<input name="q" placeholder="Filter findings, CVEs, owners…" aria-label="Search findings">
       </form>
       <a class="btn btn-ghost" href="/docs" target="_blank" rel="noopener">{{ icon("terminal") }}API docs</a>

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, sev_badge, state_badge, conf %}
+{% from "_parts.html" import vuln_tabs, sel, facet_box with context %}
+{% block title %}Vulnerabilities{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Vulnerabilities · <span class="t-violet">deduplicated, owned, tracked</span></div>
+    <h1>All findings</h1>
+    <p class="lede">Every weakness once, across every scanner, with its owner and its ticket. Filter by any field; facets count what the current filter shows.</p>
+  </div>
+  <div class="head-actions">
+    <span class="chip"><span class="muted mono">Matching</span><b class="mono">{{ total }}</b></span>
+    <a class="btn btn-outline" href="/ui/vulnerabilities.csv?{{ flt.qs(page=1) }}">{{ icon("download") }}Export CSV</a>
+  </div>
+</section>
+{{ vuln_tabs("findings") }}
+
+<form class="card filters" method="get" action="/ui/vulnerabilities">
+  <div class="filters-row">
+    <label class="search-lg">{{ icon("search") }}<input name="q" value="{{ flt.q }}" placeholder="CVE, package, asset, rule, fingerprint, owner or artifact"></label>
+    <fieldset class="sevs" aria-label="Severity">
+      {% for sid, name in [(5, "Critical"), (4, "High"), (3, "Medium"), (2, "Low"), (1, "Info")] %}
+      <label class="sev-check sev-{{ sid }}"><input type="checkbox" name="sev" value="{{ sid }}" {{ 'checked' if sid in flt.sev }}><span>{{ name }}</span></label>
+      {% endfor %}
+    </fieldset>
+  </div>
+  <div class="filters-grid">
+    {{ sel("Status", "status", flt.status, [("open", "Open"), ("fixed", "Fixed"), ("", "Any")]) }}
+    {{ sel("Kind", "kind", flt.kind, [("", "All"), ("vuln", "Vulnerability"), ("config", "Misconfiguration")]) }}
+    <label class="sel"><span>Scanner</span><select name="scanner"><option value="">All</option>{% for a in adapters %}<option value="{{ a }}" {{ 'selected' if flt.scanner == a }}>{{ a }}</option>{% endfor %}</select></label>
+    <label class="sel"><span>Owner</span><select name="owner"><option value="">All</option>{% for o in owners + ['unassigned'] %}<option value="{{ o }}" {{ 'selected' if flt.owner == o }}>@{{ o }}</option>{% endfor %}</select></label>
+    <label class="sel"><span>Owner rule</span><select name="rule"><option value="">All</option>{% for r in rule_ladder %}<option value="{{ r.key }}" {{ 'selected' if flt.rule == r.key }}>{{ r.n }}. {{ r.name }}</option>{% endfor %}</select></label>
+    {{ sel("Confidence", "conf", flt.conf, [("", "All"), ("ok", "Above limit"), ("review", "Needs review")]) }}
+    {{ sel("Fix", "fix", flt.fix, [("", "Any"), ("yes", "Fix available"), ("no", "No fix yet")]) }}
+    {{ sel("Production", "prod", flt.prod, [("", "Any"), ("yes", "Prod-tagged only")]) }}
+    <label class="sel"><span>Work item</span><select name="wi_state"><option value="">Any</option>{% for k, label, _ in states %}<option value="{{ k }}" {{ 'selected' if flt.wi_state == k }}>{{ label }}</option>{% endfor %}</select></label>
+    {{ sel("Ticket", "ticket", flt.ticket, [("", "Any"), ("yes", "Has ticket"), ("no", "No ticket")]) }}
+    {{ sel("First seen", "age", flt.age|string, [("0", "Any time"), ("1", "Last 24h"), ("7", "Last 7 days"), ("30", "Last 30 days"), ("90", "Last 90 days")]) }}
+    <label class="sel"><span>Account</span><input name="account" value="{{ flt.account }}" placeholder="exact id"></label>
+    <label class="sel"><span>Artifact</span><input name="artifact" value="{{ flt.artifact }}" placeholder="contains"></label>
+    {{ sel("Sort", "sort", flt.sort, [("sev", "Severity"), ("first", "First seen"), ("last", "Last seen"), ("owner", "Owner"), ("package", "Package"), ("conf", "Confidence")]) }}
+    {{ sel("Order", "dir", flt.dir, [("desc", "Descending"), ("asc", "Ascending")]) }}
+    {{ sel("Rows", "size", size|string, [("25", "25"), ("50", "50"), ("100", "100"), ("200", "200")]) }}
+    <div class="filter-actions"><button class="btn btn-primary">{{ icon("search") }}Apply</button><a class="link" href="/ui/vulnerabilities">Reset</a></div>
+  </div>
+  {% set chips = flt.chips() %}
+  {% if chips %}
+  <div class="scope"><b>Active filter scope:</b>
+    {% for label, qs in chips %}<a class="scope-chip" href="/ui/vulnerabilities?{{ qs }}">{{ label }} {{ icon("x") }}</a>{% endfor %}
+    <a class="link scope-clear" href="/ui/vulnerabilities">Clear all</a></div>
+  {% endif %}
+</form>
+
+<div class="explorer">
+  <aside class="facets card" aria-label="Facets">
+    {{ facet_box("Severity", facet.sev, "sev", true) }}
+    {{ facet_box("Scanner", facet.scanner, "scanner") }}
+    {{ facet_box("Owner", facet.owner, "owner") }}
+    {{ facet_box("Owner rule", facet.rule, "rule") }}
+    {{ facet_box("Kind", facet.kind, "kind") }}
+    {{ facet_box("Account", facet.account[:8], "account") }}
+  </aside>
+
+  <section class="card table-card">
+    {% if rows %}
+    <div class="tbl-wrap">
+    <table class="tbl tbl-dense">
+      <thead><tr><th>Sev</th><th>Finding</th><th>Package or resource</th><th>Owner</th><th>Sources</th><th>Work item</th><th>Seen</th></tr></thead>
+      <tbody>
+      {% for f in rows %}
+      {% set wi = items.get(f.work_item_key) %}
+      <tr class="{{ 'row-dim' if f.status == 'fixed' }}">
+        <td>{{ sev_badge(f.severity_id) }}</td>
+        <td class="cell-main">{% if f.kind == 'vuln' %}<a class="mono strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.vuln_id }}</a><br><small class="muted">{{ f.title|short(64) }}</small>
+          {% else %}<a class="strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.title|short(72) }}</a><br><small class="mono muted">{{ f.rule_key|short(34) }}</small>{% endif %}</td>
+        <td class="mono small cell-res">{% if f.kind == 'vuln' %}<b>{{ f.package|short(34) }}</b> {{ f.installed_version|short(16) }} → <span class="{{ 't-ok' if f.fixed_version else 't-crit' }}">{{ (f.fixed_version or 'no fix')|short(16) }}</span>{% else %}<b>{{ (f.asset_name or f.asset_key)|short(36) }}</b> <span class="muted">{{ f.asset_type.rsplit('/', 1)[-1]|short(24) }}</span>{% endif %}
+          <br><span class="muted" title="{{ f.asset_key }}">{{ f.artifact|short(30) }}{% if f.account_uid and f.account_uid != f.artifact %} · {{ f.account_uid|short(14) }}{% endif %}</span></td>
+        <td class="small"><span class="owner-tag {{ 'owner-review' if f.needs_review }}">@{{ f.owner_slug or '—' }}</span><br><span class="mono muted">{{ f.owner_rule|short(22) }}</span> {{ conf(f) }}</td>
+        <td class="mono small">{{ sources.get(f.id, [])|join(", ") }}{% if sources.get(f.id, [])|length > 1 %}<br><span class="tag-amber">merged</span>{% endif %}</td>
+        <td class="small">{% if wi %}<a class="mono t-amber" href="/ui/workitems/{{ wi.key }}">{{ wi.ticket_key or wi.key[:9]|upper }}</a><br>{{ state_badge(wi.state) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="small muted">{{ f.first_seen|ago }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <nav class="pager mono">
+      <span class="muted">Page {{ page }} of {{ pages }} · {{ total }} findings · {{ size }} per page</span>
+      <span>
+        {% if page > 1 %}<a class="btn btn-ghost" href="/ui/vulnerabilities?{{ flt.qs(page=page - 1) }}">← Prev</a>{% endif %}
+        {% if page < pages %}<a class="btn btn-ghost" href="/ui/vulnerabilities?{{ flt.qs(page=page + 1) }}">Next →</a>{% endif %}
+      </span>
+    </nav>
+    {% else %}
+    <p class="empty-note">{{ icon("search") }}No findings match this filter.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

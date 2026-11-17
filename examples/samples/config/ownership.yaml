@@ -1,0 +1,88 @@
+# Ownership for the DefectDojo sample scans (hack/demo-samples.sh).
+# Prowler and Trivy samples: CODEOWNERS for the container image, patterns for
+# IAM roles and the filesystem scan.
+# Wiz samples (Azure, Kubernetes, GCP from Wiz's demo tenant): the "Owner" tag
+# on 8 resources, then resource-type patterns, then the subscription default.
+owners:
+  - slug: identity
+    name: Identity & Access
+    jira_project: IAM
+  - slug: platform
+    name: Cloud Platform
+    jira_project: PLAT
+    aliases: [DemoTeam]       # Wiz resource tag Owner=DemoTeam
+  - slug: app
+    name: Application Team
+    jira_project: APP
+
+tag_keys: [owner, team]
+
+# Ownership connectors. Demo data comes from snapshot files (KAVLO_GRAPH_SNAPSHOT,
+# KAVLO_LEANIX_SNAPSHOT); with credentials the same rules use the live APIs.
+connectors:
+  graph:
+    # Wiz tags such as Owner=JD name a person; Entra group membership names the team.
+    person_tag_keys: [owner, contact]
+    group_map:
+      sg-app-team: app
+      sg-platform-engineering: platform
+      sg-identity: identity
+  leanix:
+    # Kubernetes labels name the application; LeanIX knows which team owns it.
+    app_tag_keys: [app, application, "app.kubernetes.io/part-of", "app.kubernetes.io/name", "app.kubernetes.io/instance"]
+    team_map:
+      Cloud Platform Team: platform
+      Storefront: app
+      Application Team: app
+
+# The sample image "teamdojo:latest" has no source label, so map it to a repo.
+image_repos:
+  - image: "teamdojo"
+    repo: github.com/example/teamdojo
+codeowners:
+  - repo: github.com/example/teamdojo
+    file: codeowners/teamdojo.CODEOWNERS
+image_default_path: Dockerfile
+
+patterns:
+  - id: iam-roles
+    owner: identity
+    asset: "arn:aws:iam::*:role/*"
+  - id: service-checkout
+    owner: app
+    asset: "fs:*"
+  # Wiz: identities
+  - id: azure-ad-identities
+    owner: identity
+    type: "Microsoft.AzureActiveDirectory/*"
+  - id: azure-service-principals
+    owner: identity
+    type: "ServicePrincipal/*"
+  - id: k8s-users
+    owner: identity
+    type: "User"
+  - id: k8s-service-accounts
+    owner: identity
+    type: "ServiceAccount"
+  # Wiz: compute and clusters
+  - id: azure-vms
+    owner: platform
+    type: "Microsoft.Compute/*"
+  - id: aks-clusters
+    owner: platform
+    type: "Microsoft.ContainerService/*"
+  - id: k8s-workloads
+    owner: app
+    type: "Deployment"
+  - id: gke-nodes
+    owner: platform
+    name: "k8s-*"
+  - id: wizcli-image
+    owner: app
+    name: "wizcli-imagescan"
+
+account_defaults:
+  "123456789012": platform
+  "fee3535b-9616-486f-a476-6a500a08a02b": platform   # Wiz demo Azure subscription
+
+fallback_owner: unassigned

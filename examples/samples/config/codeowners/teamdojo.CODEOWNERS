@@ -1,0 +1,4 @@
+# Example CODEOWNERS for the sample image's source repository
+*              @example/app
+/Dockerfile    @example/platform
+/app/          @example/app

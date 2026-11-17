@@ -1,0 +1,13 @@
+{
+  "_comment": "Made-up Entra ID people and groups for the sample demo (KAVLO_GRAPH_SNAPSHOT). Same shape the live sync stores.",
+  "people": [
+    {"id": "11111111-0000-4000-8000-000000000001", "userPrincipalName": "jd@example.com", "mail": "jd@example.com",
+     "mailNickname": "JD", "displayName": "Jordan Diaz", "department": "Storefront", "groups": ["sg-app-team"]},
+    {"id": "11111111-0000-4000-8000-000000000002", "userPrincipalName": "sam.okafor@example.com", "mail": "sam.okafor@example.com",
+     "mailNickname": "sam.okafor", "displayName": "Sam Okafor", "department": "Cloud Platform", "groups": ["sg-platform-engineering"]},
+    {"id": "11111111-0000-4000-8000-000000000003", "userPrincipalName": "maria.lopez@example.com", "mail": "maria.lopez@example.com",
+     "mailNickname": "maria.lopez", "displayName": "Maria Lopez", "department": "Identity & Access", "groups": ["sg-identity"]},
+    {"id": "11111111-0000-4000-8000-000000000004", "userPrincipalName": "lee.chen@example.com", "mail": "lee.chen@example.com",
+     "mailNickname": "lee.chen", "displayName": "Lee Chen", "department": "Finance IT", "groups": ["sg-finance-it"]}
+  ]
+}
