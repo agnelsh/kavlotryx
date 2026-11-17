@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, state_badge %}
+{% block title %}Work items & Jira{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><span class="tag-amber mono">dispatch</span> <span class="muted">/</span> <span class="t-violet">idempotent: label kavlo-&lt;hash&gt;</span></div>
+    <h1>Work items &amp; root-cause batches</h1>
+    <p class="lede">One ticket per fix and owner. A repeat run never files a second ticket; it finds the label and updates the one that exists.</p>
+  </div>
+  {% if can_write %}
+  <div class="head-actions">
+    <form method="post" action="/ui/actions/rebuild"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline">{{ icon("refresh") }}Rebuild work items</button></form>
+    <form method="post" action="/ui/actions/dry-run"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline">{{ icon("eye") }}Dry-run dispatch</button></form>
+    <form method="post" action="/ui/actions/dispatch"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-primary">{{ icon("sync") }}Dispatch to {{ tracker }}</button></form>
+  </div>
+  {% endif %}
+</section>
+
+<section class="states">
+  {% for key, label, note in states %}
+  <a class="state-card st-{{ key }} {{ 'on' if state == key }}" href="/ui/workitems?{{ 'state=' ~ key if state != key }}">
+    <span class="state-label"><i class="dot"></i>{{ label }}</span>
+    <b class="mono">{{ state_counts.get(key, 0) }}</b>
+    <small>{{ note }}</small>
+  </a>
+  {% endfor %}
+</section>
+
+{% if dry is not none %}
+<section class="card card-accent">
+  <div class="card-head"><h2>{{ icon("eye") }}Dry run: what dispatch would do</h2><span class="pill">{{ dry|length }} actions · nothing was sent</span></div>
+  {% if dry %}
+  <table class="tbl">
+    <thead><tr><th>Work item</th><th>Action</th><th>Ticket</th><th>Detail</th></tr></thead>
+    <tbody>{% for a in dry %}<tr><td class="mono"><a class="link" href="/ui/workitems/{{ a.work_item }}">{{ a.work_item }}</a></td><td><span class="tag-{{ 'amber' if a.action == 'create' else 'dim' }} mono">{{ a.action }}</span></td><td class="mono">{{ a.ticket }}</td><td>{{ a.detail }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="empty-note">{{ icon("check") }}Every dispatchable work item already has an up-to-date ticket.</p>{% endif %}
+</section>
+{% endif %}
+
+<div class="split">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("tree") }}Deterministic root-cause batching</h2></div>
+    <p class="muted">Findings that one change removes share a group key. The owner is always part of the key, so a team only gets its own work.</p>
+    <div class="split split-even">
+      <div class="inset">
+        <b class="t-amber mono caps small">{{ icon("layers") }}CVE / dependency</b>
+        <code class="keyline">owner · artifact · source package</code>
+        <small class="muted">Target = the highest fixed version in the group. libssl3 and openssl become one "upgrade openssl" item.</small>
+      </div>
+      <div class="inset">
+        <b class="t-ok mono caps small">{{ icon("tree") }}Cloud misconfiguration</b>
+        <code class="keyline">owner · account · rule</code>
+        <small class="muted">Every resource that breaks one rule in one account becomes one item.</small>
+      </div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("merge") }}Ticket noise reduction</h2>{% if reduction is not none %}<span class="tag-ok mono">−{{ reduction }}%</span>{% endif %}</div>
+    <div class="noise">
+      <div><span class="muted">Raw scanner rows</span><b class="mono t-crit">{{ observations }}</b></div>
+      <span class="bar"><i class="bar-fill tone-crit" data-w="100"></i></span>
+      <div><span class="muted">Tickets filed by Kavlotryx</span><b class="mono t-ok">{{ ticketed }}</b></div>
+      <span class="bar"><i class="bar-fill tone-ok" data-w="{{ (100 * ticketed / observations) if observations else 0 }}"></i></span>
+    </div>
+    <p class="muted small mono">{% if ratio %}{{ ratio }} rows per ticket · {% endif %}tracker: {{ tracker }}</p>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("ticket") }}Work items <span class="pill">{{ rows|length }}</span></h2>
+    <nav class="tabs">
+      <a class="{{ 'on' if not owner }}" href="/ui/workitems{{ '?state=' ~ state if state }}">All</a>
+      {% for o, n in owner_counts|dictsort %}<a class="{{ 'on' if owner == o }}" href="/ui/workitems?owner={{ o }}{{ '&state=' ~ state if state }}">{{ o }} <small>{{ n }}</small></a>{% endfor %}
+    </nav>
+  </div>
+  {% if rows %}
+  <div class="tbl-wrap">
+  <table class="tbl tbl-items">
+    <thead><tr><th>Work item</th><th>Ticket &amp; state</th><th>Root-cause title &amp; target</th><th class="num">Open</th><th>Priority</th></tr></thead>
+    <tbody>
+    {% for w in rows %}
+      {% set left = (w.due_date - today).days if w.due_date else none %}
+      <tr>
+        <td class="mono"><a class="t-amber strong" href="/ui/workitems/{{ w.key }}">{{ w.key[:9]|upper }}</a><br><small class="muted">@{{ w.owner_slug }}</small></td>
+        <td>
+          {% if w.ticket_key %}<span class="mono strong">{{ icon("sync") }}{% if w.ticket_url.startswith('https://') %}<a class="link" href="{{ w.ticket_url }}" target="_blank" rel="noopener noreferrer">{{ w.ticket_key }}</a>{% else %}{{ w.ticket_key }}{% endif %}</span> {% endif %}{{ state_badge(w.state) }}
+          {% if not w.dispatchable %}<br><small class="muted">not dispatched{{ ': no fix yet' if w.kind == 'vuln-nofix' }}</small>{% endif %}
+        </td>
+        <td><a class="strong plain" href="/ui/workitems/{{ w.key }}">{{ w.title }}</a><br>
+          <small class="mono muted">{% if w.kind.startswith('vuln') %}<span class="t-crit">{{ w.package }}</span> · {{ w.artifact }}{% else %}{{ w.rule_key }}{% if w.account_uid %} · AWS {{ w.account_uid }}{% endif %}{% endif %}</small></td>
+        <td class="num mono">{{ open_counts.get(w.key, 0) }}<small class="muted">/{{ total_counts.get(w.key, 0) }}</small></td>
+        <td><span class="prio prio-{{ w.priority|lower }}"><i class="dot"></i>{{ w.priority }}{% if left is not none and w.state not in ('verified', 'superseded') %} · {{ 'overdue ' ~ (-left) ~ 'd' if left < 0 else 'due ' ~ left ~ 'd' }}{% endif %}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty-note">No work items{{ ' for this filter' if owner or state }}. {% if not owner and not state %}Ingest a scan and rebuild.{% endif %}</p>{% endif %}
+</section>
+
+<section class="trio">
+  <div class="card">
+    <span class="mono caps small"><i class="dot dot-ok"></i>Ticket dispatch</span>
+    <h3>One ticket per work item</h3>
+    <p class="muted">The label <code>kavlo-&lt;hash&gt;</code> is searched before every create. Text goes in as plain ADF text nodes, never Jira markup.</p>
+  </div>
+  <div class="card">
+    <span class="mono caps small"><i class="dot dot-amber"></i>Verification</span>
+    <h3>No false closures</h3>
+    <p class="muted">A ticket moved to Done while scans still report findings is held in <code>pending_verification</code>.</p>
+  </div>
+  <div class="card">
+    <span class="mono caps small"><i class="dot dot-crit"></i>Regression</span>
+    <h3>Reopen, never duplicate</h3>
+    <p class="muted">If a fixed finding returns, Kavlotryx reopens the same ticket with a comment.</p>
+  </div>
+</section>
+{% endblock %}

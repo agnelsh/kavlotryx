@@ -1,0 +1,7 @@
+confidence_limit: 0.7
+due_days: {Critical: 7, High: 30, Medium: 90, Low: 180}
+jira_priority: {Critical: Highest, High: High, Medium: Medium, Low: Low}
+dispatch_min_priority: Low
+dispatch_without_fix: false
+production_tag_keys: [env, environment]
+production_values: [prod, production]

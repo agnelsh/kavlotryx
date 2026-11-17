@@ -1,0 +1,32 @@
+# docker compose -f deploy/compose.yaml up --build
+# Set KAVLO_API_TOKENS in your shell first, e.g.
+#   export KAVLO_API_TOKENS="me:admin:$(openssl rand -hex 24)"
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kavlotryx
+      POSTGRES_USER: kavlotryx
+      POSTGRES_PASSWORD: kavlotryx-dev-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kavlotryx"]
+      interval: 2s
+      retries: 20
+    volumes: [pgdata:/var/lib/postgresql/data]
+  api:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      KAVLO_DATABASE_URL: postgresql+psycopg://kavlotryx:kavlotryx-dev-only@db:5432/kavlotryx
+      KAVLO_API_TOKENS: ${KAVLO_API_TOKENS:?set KAVLO_API_TOKENS}
+      KAVLO_TRACKER: ${KAVLO_TRACKER:-fake}
+      KAVLO_FAKE_TRACKER_FILE: /tmp/tracker.json
+      KAVLO_JIRA_URL: ${KAVLO_JIRA_URL:-}
+      KAVLO_JIRA_EMAIL: ${KAVLO_JIRA_EMAIL:-}
+      KAVLO_JIRA_TOKEN: ${KAVLO_JIRA_TOKEN:-}
+    volumes: [../examples/config:/etc/kavlotryx:ro]
+    read_only: true
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:8080:8080"]
+volumes:
+  pgdata: {}

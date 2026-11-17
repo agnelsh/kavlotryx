@@ -1,0 +1,46 @@
+# Owners and ownership rules. Rules run in this order; the first match wins:
+#   1 manual override (kavlo owner set)     confidence 1.0
+#   2 resource tag (tag_keys)               0.9
+#   3 GitHub CODEOWNERS                     0.85
+#   4 pattern rules                         0.75
+#   5 account / registry default            0.5  (below the 0.7 limit: needs review)
+#   6 fallback_owner                        0.0
+owners:
+  - slug: payments
+    name: Payments
+    jira_project: PAY
+  - slug: platform
+    name: Cloud Platform
+    jira_project: PLAT
+  - slug: data
+    name: Data Engineering
+    jira_project: DATA
+    aliases: [data-eng]
+
+tag_keys: [owner, team]
+
+codeowners:
+  - repo: github.com/acme/payments-api
+    file: codeowners/acme-payments-api.CODEOWNERS
+    team_map:
+      "@acme/platform": platform
+      "@acme/payments": payments
+
+# Container images without an org.opencontainers.image.source label.
+image_repos:
+  - image: "ghcr.io/acme/legacy-*"
+    repo: github.com/acme/legacy-monorepo
+image_default_path: Dockerfile   # OS packages in an image belong to the Dockerfile owner
+
+patterns:
+  - id: payments-databases
+    owner: payments
+    name: "payments-*"
+
+account_defaults:
+  "123456789012": platform
+
+registry_defaults:
+  "ghcr.io/acme/*": platform
+
+fallback_owner: unassigned

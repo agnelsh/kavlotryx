@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="4 6 44 44" fill="none">
+  <!-- Kavlotryx mark, from the "Kavlotryx Solar Phosphor Logo" Stitch screen -->
+  <defs>
+    <linearGradient id="brandAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/><stop offset="50%" stop-color="#F97316"/><stop offset="100%" stop-color="#EF4444"/>
+    </linearGradient>
+    <linearGradient id="neonMint" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F5A0"/><stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="6" width="44" height="44" rx="12" fill="#141418" stroke="#272730" stroke-width="1.5"/>
+  <circle cx="16" cy="18" r="2.5" fill="#F59E0B"/>
+  <circle cx="36" cy="18" r="2.5" fill="#F97316"/>
+  <circle cx="26" cy="40" r="2.5" fill="#A855F7"/>
+  <line x1="16" y1="18" x2="26" y2="25" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="2 2"/>
+  <line x1="36" y1="18" x2="26" y2="25" stroke="#F97316" stroke-width="1.5" stroke-dasharray="2 2"/>
+  <line x1="26" y1="40" x2="26" y2="33" stroke="#A855F7" stroke-width="1.5"/>
+  <polygon points="26,21 34,25.5 34,34.5 26,39 18,34.5 18,25.5" fill="#181820" stroke="url(#brandAmber)" stroke-width="1.8"/>
+  <path d="M22 30 L25 33 L30 27" stroke="url(#neonMint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

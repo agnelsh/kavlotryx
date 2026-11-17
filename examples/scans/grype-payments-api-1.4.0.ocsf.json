@@ -1,0 +1,46 @@
+[
+  {
+    "class_uid": 2002,
+    "class_name": "Vulnerability Finding",
+    "category_uid": 2,
+    "activity_id": 1,
+    "type_uid": 200201,
+    "severity_id": 4,
+    "severity": "High",
+    "time": 1794900000,
+    "metadata": {
+      "version": "1.9.0",
+      "product": {
+        "name": "Grype",
+        "vendor_name": "Anchore",
+        "version": "0.92.0"
+      }
+    },
+    "finding_info": {
+      "uid": "grype-CVE-2024-6119-libssl3",
+      "title": "CVE-2024-6119 in libssl3"
+    },
+    "vulnerabilities": [
+      {
+        "cve": {
+          "uid": "CVE-2024-6119"
+        },
+        "severity": "High",
+        "affected_packages": [
+          {
+            "name": "libssl3",
+            "version": "3.0.11-1~deb12u2",
+            "fixed_in_version": "3.0.14-1~deb12u2"
+          }
+        ]
+      }
+    ],
+    "resources": [
+      {
+        "uid": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "name": "ghcr.io/acme/payments-api:1.4.0",
+        "type": "Container Image"
+      }
+    ]
+  }
+]

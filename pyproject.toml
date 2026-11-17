@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kavlotryx"
+version = "0.1.0.dev0"
+description = "Turn security scanner findings into owned, tracked, scan-verified work."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = [{ name = "Kavlotryx contributors" }]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "sqlalchemy>=2.0",
+  "pyyaml>=6.0",
+  "typer>=0.12",
+  "rich>=13",
+  "httpx>=0.27",
+  "pathspec>=0.12",
+  "python-multipart>=0.0.9",
+  "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+kavlo = "kavlotryx.cli.main:app"
+
+# Adapter plug-ins (FR-IN-07). Outside packages register their own entry points
+# in this group and Kavlotryx loads them by name.
+[project.entry-points."kavlotryx.adapters"]
+prowler = "kavlotryx.adapters.prowler:ProwlerAdapter"
+trivy = "kavlotryx.adapters.trivy:TrivyAdapter"
+ocsf = "kavlotryx.adapters.ocsf:OcsfAdapter"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kavlotryx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = ["S101", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]

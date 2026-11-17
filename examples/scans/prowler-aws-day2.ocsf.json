@@ -1,0 +1,239 @@
+[
+  {
+    "message": "Ensure no security groups allow ingress from 0.0.0.0/0 to port 22",
+    "metadata": {
+      "event_code": "ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22",
+      "product": {
+        "name": "Prowler",
+        "uid": "prowler",
+        "vendor_name": "Prowler",
+        "version": "5.13.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ],
+      "version": "1.4.0"
+    },
+    "severity_id": 4,
+    "severity": "High",
+    "status": "New",
+    "status_code": "FAIL",
+    "status_detail": "Ensure no security groups allow ingress from 0.0.0.0/0 to port 22",
+    "status_id": 1,
+    "activity_id": 1,
+    "activity_name": "Create",
+    "finding_info": {
+      "created_time": 1794900000,
+      "desc": "Security group legacy-jump-sg allows SSH from the internet.",
+      "product_uid": "prowler",
+      "title": "Ensure no security groups allow ingress from 0.0.0.0/0 to port 22",
+      "uid": "prowler-aws-ec2_securitygroup_allow_ingress_from_internet_to_tcp_port_22-123456789012-us-east-1-legacy-jump-sg"
+    },
+    "resources": [
+      {
+        "cloud_partition": "aws",
+        "region": "us-east-1",
+        "data": {
+          "details": "",
+          "metadata": {
+            "name": "legacy-jump-sg",
+            "arn": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-0a1b2c3d4e5f60002",
+            "tags": []
+          }
+        },
+        "group": {
+          "name": "AwsEc2SecurityGroup"
+        },
+        "labels": [],
+        "name": "legacy-jump-sg",
+        "type": "AwsEc2SecurityGroup",
+        "uid": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-0a1b2c3d4e5f60002"
+      }
+    ],
+    "category_name": "Findings",
+    "category_uid": 2,
+    "class_name": "Detection Finding",
+    "class_uid": 2004,
+    "cloud": {
+      "account": {
+        "name": "acme-prod",
+        "type": "AWS Account",
+        "type_id": 10,
+        "uid": "123456789012",
+        "labels": []
+      },
+      "org": {
+        "name": "",
+        "uid": ""
+      },
+      "provider": "aws",
+      "region": "us-east-1"
+    },
+    "remediation": {
+      "desc": "Restrict port 22 to known addresses or use SSM Session Manager.",
+      "references": []
+    },
+    "time": 1794900000,
+    "type_uid": 200401,
+    "type_name": "Detection Finding: Create"
+  },
+  {
+    "message": "Ensure RDS instances have storage encryption enabled",
+    "metadata": {
+      "event_code": "rds_instance_storage_encrypted",
+      "product": {
+        "name": "Prowler",
+        "uid": "prowler",
+        "vendor_name": "Prowler",
+        "version": "5.13.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ],
+      "version": "1.4.0"
+    },
+    "severity_id": 3,
+    "severity": "Medium",
+    "status": "New",
+    "status_code": "FAIL",
+    "status_detail": "Ensure RDS instances have storage encryption enabled",
+    "status_id": 1,
+    "activity_id": 1,
+    "activity_name": "Create",
+    "finding_info": {
+      "created_time": 1794900000,
+      "desc": "RDS instance payments-db is not encrypted.",
+      "product_uid": "prowler",
+      "title": "Ensure RDS instances have storage encryption enabled",
+      "uid": "prowler-aws-rds_instance_storage_encrypted-123456789012-us-east-1-payments-db"
+    },
+    "resources": [
+      {
+        "cloud_partition": "aws",
+        "region": "us-east-1",
+        "data": {
+          "details": "",
+          "metadata": {
+            "name": "payments-db",
+            "arn": "arn:aws:rds:us-east-1:123456789012:db:payments-db",
+            "tags": []
+          }
+        },
+        "group": {
+          "name": "AwsRdsDbInstance"
+        },
+        "labels": [],
+        "name": "payments-db",
+        "type": "AwsRdsDbInstance",
+        "uid": "arn:aws:rds:us-east-1:123456789012:db:payments-db"
+      }
+    ],
+    "category_name": "Findings",
+    "category_uid": 2,
+    "class_name": "Detection Finding",
+    "class_uid": 2004,
+    "cloud": {
+      "account": {
+        "name": "acme-prod",
+        "type": "AWS Account",
+        "type_id": 10,
+        "uid": "123456789012",
+        "labels": []
+      },
+      "org": {
+        "name": "",
+        "uid": ""
+      },
+      "provider": "aws",
+      "region": "us-east-1"
+    },
+    "remediation": {
+      "desc": "Restore from an encrypted snapshot.",
+      "references": []
+    },
+    "time": 1794900000,
+    "type_uid": 200401,
+    "type_name": "Detection Finding: Create"
+  },
+  {
+    "message": "Ensure MFA is enabled for all IAM users with a console password",
+    "metadata": {
+      "event_code": "iam_user_mfa_enabled_console_access",
+      "product": {
+        "name": "Prowler",
+        "uid": "prowler",
+        "vendor_name": "Prowler",
+        "version": "5.13.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ],
+      "version": "1.4.0"
+    },
+    "severity_id": 4,
+    "severity": "High",
+    "status": "New",
+    "status_code": "PASS",
+    "status_detail": "Ensure MFA is enabled for all IAM users with a console password",
+    "status_id": 1,
+    "activity_id": 1,
+    "activity_name": "Create",
+    "finding_info": {
+      "created_time": 1794900000,
+      "desc": "User alice has MFA enabled.",
+      "product_uid": "prowler",
+      "title": "Ensure MFA is enabled for all IAM users with a console password",
+      "uid": "prowler-aws-iam_user_mfa_enabled_console_access-123456789012-us-east-1-alice"
+    },
+    "resources": [
+      {
+        "cloud_partition": "aws",
+        "region": "us-east-1",
+        "data": {
+          "details": "",
+          "metadata": {
+            "name": "alice",
+            "arn": "arn:aws:iam::123456789012:user/alice",
+            "tags": []
+          }
+        },
+        "group": {
+          "name": "AwsIamUser"
+        },
+        "labels": [],
+        "name": "alice",
+        "type": "AwsIamUser",
+        "uid": "arn:aws:iam::123456789012:user/alice"
+      }
+    ],
+    "category_name": "Findings",
+    "category_uid": 2,
+    "class_name": "Detection Finding",
+    "class_uid": 2004,
+    "cloud": {
+      "account": {
+        "name": "acme-prod",
+        "type": "AWS Account",
+        "type_id": 10,
+        "uid": "123456789012",
+        "labels": []
+      },
+      "org": {
+        "name": "",
+        "uid": ""
+      },
+      "provider": "aws",
+      "region": "us-east-1"
+    },
+    "remediation": {
+      "desc": "",
+      "references": []
+    },
+    "time": 1794900000,
+    "type_uid": 200401,
+    "type_name": "Detection Finding: Create"
+  }
+]

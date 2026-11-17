@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Kavlotryx</title>
+<link rel="icon" href="/ui/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/kavlo.css">
+</head>
+<body class="login-body">
+<main class="login">
+  <img src="/ui/static/logo.svg" alt="" width="56" height="56">
+  <h1>KAVLO<em>TRYX</em></h1>
+  <p class="muted">Sign in with an API token from <code>KAVLO_API_TOKENS</code>. Roles admin, analyst and viewer can use the console.</p>
+  {% if error == "invalid" %}<div class="flash flash-error">That token is not valid.</div>{% endif %}
+  {% if error == "role" %}<div class="flash flash-error">Ingest tokens can upload scans but cannot sign in.</div>{% endif %}
+  <form method="post" action="/ui/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field"><span>API token</span><input type="password" name="token" autocomplete="current-password" required autofocus></label>
+    <button class="btn btn-primary btn-block">Sign in</button>
+  </form>
+</main>
+</body>
+</html>

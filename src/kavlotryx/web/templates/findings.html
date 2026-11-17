@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, sev_badge, state_badge, conf %}
+{% block title %}Findings & ownership{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Deterministic identity engine · <span class="t-violet">SHA-256 fingerprints</span></div>
+    <h1>Deduplicated findings &amp; owner attribution</h1>
+    <p class="lede">Scanner rows merge into one record per weakness and asset (<span class="tag-violet">SHA-256</span>). Ordered rules pick the owner and keep the evidence.</p>
+  </div>
+  <div class="head-actions">
+    <span class="chip"><span class="muted mono">Records</span><b class="mono">{{ total }}</b>{% if metrics.noise_reduction %}<span class="tag-ok">{{ metrics.noise_reduction }}× merged</span>{% endif %}</span>
+    {% if can_write %}
+    <form method="post" action="/ui/actions/rebuild"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline">{{ icon("refresh") }}Re-evaluate all rules</button></form>
+    {% endif %}
+  </div>
+</section>
+
+<form class="card filters" method="get" action="/ui/findings">
+  <div class="filters-row">
+    <label class="search-lg">{{ icon("search") }}<input name="q" value="{{ flt.q }}" placeholder="Fingerprint, CVE, asset ARN, image digest, package or owner"></label>
+    <label class="sel"><span>Kind</span><select name="kind">
+      <option value="" {{ 'selected' if not flt.kind }}>All</option>
+      <option value="vuln" {{ 'selected' if flt.kind == 'vuln' }}>Vulnerability</option>
+      <option value="config" {{ 'selected' if flt.kind == 'config' }}>Misconfiguration</option></select></label>
+    <label class="sel"><span>Severity</span><select name="sev">
+      <option value="0">All</option>
+      {% for v, n in [(5, "Critical+"), (4, "High+"), (3, "Medium+"), (2, "Low+")] %}<option value="{{ v }}" {{ 'selected' if flt.sev == v }}>{{ n }}</option>{% endfor %}</select></label>
+    <label class="sel"><span>Confidence</span><select name="conf">
+      <option value="">All</option>
+      <option value="ok" {{ 'selected' if flt.conf == 'ok' }}>≥ {{ "%.2f"|format(limit) }}</option>
+      <option value="review" {{ 'selected' if flt.conf == 'review' }}>&lt; {{ "%.2f"|format(limit) }} (review)</option></select></label>
+    <label class="sel"><span>Owner</span><select name="owner">
+      <option value="">All</option>
+      {% for o in owners %}<option value="{{ o }}" {{ 'selected' if flt.owner == o }}>{{ o }}</option>{% endfor %}</select></label>
+    <label class="sel"><span>Status</span><select name="status">
+      <option value="open" {{ 'selected' if flt.status == 'open' }}>Open</option>
+      <option value="fixed" {{ 'selected' if flt.status == 'fixed' }}>Fixed</option>
+      <option value="" {{ 'selected' if not flt.status }}>Any</option></select></label>
+    <button class="btn btn-outline">Apply</button>
+  </div>
+  {% set chips = flt.chips() %}
+  {% if chips %}
+  <div class="scope">
+    <b>Active filter scope:</b>
+    {% for label, qs in chips %}<a class="scope-chip" href="/ui/findings?{{ qs }}">{{ label }} {{ icon("x") }}</a>{% endfor %}
+    <a class="link scope-clear" href="/ui/findings">Clear</a>
+  </div>
+  {% endif %}
+</form>
+
+<section>
+  <div class="sec-head">
+    <h2>{{ icon("tree") }}Ownership rule hierarchy <span class="pill mono">first match wins: 1 → 5</span></h2>
+    <span class="muted mono">Above the {{ "%.2f"|format(limit) }} limit: <b class="tag-ok">{{ metrics.assignment_coverage_pct if metrics.assignment_coverage_pct is not none else 0 }}%</b></span>
+  </div>
+  {% set won = rule_family(detail.f.owner_rule) if detail else "" %}
+  <div class="ladder">
+    {% for r in ladder %}
+    <div class="rule tone-{{ r.tone }} {{ 'rule-won' if won == r.key }}">
+      {% if won == r.key %}<span class="rule-flag">selected finding</span>{% endif %}
+      <div class="rule-top"><span class="rule-tier">Rule {{ r.n }} · {{ r.tier }}</span><span class="rule-conf">{{ r.conf }} conf</span></div>
+      <b class="rule-name">{{ r.name }}</b>
+      <span class="rule-desc">{{ r.desc }}</span>
+      <div class="rule-count"><b class="mono">{{ r.count }}</b><span class="mono">{{ r.pct }}%{% if r.key == 'default' and r.count %} · needs review{% endif %}</span></div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="split split-7-5">
+  <section>
+    <div class="sec-head">
+      <h2 class="mono caps">Canonical records <span class="pill">{{ rows|length }} of {{ total }}</span></h2>
+      <span class="muted mono">sorted by severity</span>
+    </div>
+    {% if not rows %}
+    <div class="card empty-note">{{ icon("search") }}No findings match. {% if total == 0 and not flt.chips() %}Ingest a scan to start.{% endif %}</div>
+    {% endif %}
+    <div class="stack">
+    {% for f in rows %}
+      {% set sel = detail and detail.f.id == f.id %}
+      {% set srcs = sources.get(f.id, []) %}
+      {% set wi = items.get(f.work_item_key) %}
+      <a class="fcard {{ 'fcard-sel' if sel }} {{ 'fcard-review' if f.needs_review and not sel }}" href="/ui/findings?{{ flt.query_string(f=f.id) }}">
+        <div class="fcard-row">
+          <span class="fcard-badges">{{ sev_badge(f.severity_id) }}<span class="code-tag">{{ f.vuln_id if f.kind == 'vuln' else f.rule_key }}</span><span class="muted mono">· {{ 'Vulnerability' if f.kind == 'vuln' else 'Misconfiguration' }}</span></span>
+          {% if srcs|length > 1 %}<span class="tag-amber">{{ icon("merge") }}{{ srcs|map('title')|join(' + ') }} ({{ srcs|length }} merged)</span>
+          {% elif f.needs_review %}<span class="tag-orange">{{ icon("flag") }}Needs review</span>
+          {% else %}<span class="tag-dim">{{ srcs|join(', ') }}</span>{% endif %}
+        </div>
+        <div class="fcard-row">
+          {% if f.kind == 'vuln' %}
+          <span><b>{{ f.package }}</b> <span class="mono muted">{{ f.installed_version }} → <span class="{{ 't-ok' if f.fixed_version else 't-crit' }}">{{ f.fixed_version or 'no fix' }}</span></span></span>
+          {% else %}<b>{{ f.title }}</b>{% endif %}
+          {% if wi %}<span class="tag-{{ 'ok' if wi.state == 'verified' else 'amber' }} mono">{{ 'Verified' if wi.state == 'verified' else ('Dispatched · ' ~ wi.ticket_key if wi.ticket_key else 'Work item') }}</span>{% endif %}
+        </div>
+        <div class="inset mono">
+          <div class="trunc"><span class="muted">{{ 'image' if f.asset_type == 'Container Image' else 'asset' }}:</span> <span class="{{ 't-violet' if f.asset_key.startswith('sha256:') else 't-amber' }}">{{ f.asset_key }}</span>{% if f.asset_type == 'Container Image' %} (<span class="t-amber">{{ f.asset_name }}</span>){% endif %}</div>
+          <div class="inset-foot"><span class="trunc t-violet-soft">fp: {{ f.fingerprint }}</span>{% if f.status == 'fixed' %}<span class="t-ok">fixed {{ f.fixed_at|ago }}</span>{% endif %}</div>
+        </div>
+        <div class="fcard-row mono small">
+          <span><span class="muted caps">Owner:</span> <span class="owner-tag {{ 'owner-review' if f.needs_review }}">@{{ f.owner_slug or '—' }}</span> <span class="muted">·</span> Rule: {{ f.owner_rule or '—' }}{% if f.owner_evidence.line %} (line {{ f.owner_evidence.line }}){% endif %}</span>
+          {{ conf(f, limit) }}
+        </div>
+      </a>
+    {% endfor %}
+    </div>
+    {% if pages > 1 %}
+    <nav class="pager mono">
+      <span class="muted">Page {{ page }} of {{ pages }} · {{ total }} records</span>
+      <span>
+        {% if page > 1 %}<a class="btn btn-ghost" href="/ui/findings?{{ flt.query_string(page=page - 1) }}">← Prev</a>{% endif %}
+        {% if page < pages %}<a class="btn btn-ghost" href="/ui/findings?{{ flt.query_string(page=page + 1) }}">Next →</a>{% endif %}
+      </span>
+    </nav>
+    {% endif %}
+  </section>
+
+  <aside class="inspector">
+    {% if detail %}
+    {% set f = detail.f %}
+    <section class="card">
+      <div class="card-head">
+        <div class="ins-title">{{ icon("terminal") }}<span><b>Attribution resolution trace</b><small class="t-violet mono">kavlo owner explain {{ f.id }}</small></span></div>
+        <div class="tabs">
+          <a class="{{ 'on' if tab != 'ocsf' }}" href="/ui/findings?{{ flt.query_string(f=f.id, tab='trace') }}">Trace</a>
+          <a class="{{ 'on' if tab == 'ocsf' }}" href="/ui/findings?{{ flt.query_string(f=f.id, tab='ocsf') }}">OCSF JSON</a>
+        </div>
+      </div>
+      {% if tab == 'ocsf' %}
+      <div class="sec-head"><span class="muted mono caps">Latest observation · class {{ f.class_uid }}</span><button class="link" type="button" data-copy="#ocsf-json">{{ icon("copy") }}Copy</button></div>
+      <pre class="code" id="ocsf-json">{{ detail.raw }}</pre>
+      {% else %}
+      <div class="term mono">
+        <div class="term-head"><span>EVALUATION · first match wins</span><span>confidence limit {{ "%.2f"|format(limit) }}</span></div>
+        {% for t in explain.trace %}
+        <div class="term-step {{ 'won' if t.matched }}">
+          <span class="term-n">[{{ "%02d"|format(loop.index) }}]</span>
+          <div>
+            <div class="term-rule">{{ t.rule }} {% if t.matched %}<span class="won-tag">WON</span>{% endif %}</div>
+            <div class="term-reason">{{ '→ ' if t.matched else '• ' }}{{ t.reason }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="inset">
+        <span class="muted mono caps small">Resolved owner</span>
+        <div class="resolved"><span><i class="dot {{ 'dot-amber' if explain.needs_review else 'dot-ok' }}"></i><b class="mono">team: {{ explain.owner }}</b></span>
+          <span class="{{ 'tag-orange' if explain.needs_review else 'tag-ok' }} mono">Score {{ "%.2f"|format(explain.confidence) }}{{ ' · needs review' if explain.needs_review }}</span></div>
+        {% if explain.evidence %}
+        <dl class="kv mono small">
+          {% for k, v in explain.evidence|dictsort %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+        </dl>
+        {% endif %}
+        {% if f != none and explain.owner != f.owner_slug %}<p class="t-amber small">Stored owner is {{ f.owner_slug }}. Rebuild to apply the current rules.</p>{% endif %}
+      </div>
+      {% endif %}
+      {% if detail.wi %}
+      <a class="inset row-link" href="/ui/workitems/{{ detail.wi.key }}">
+        <span class="row-main"><small class="muted mono caps">Work item</small><b>{{ detail.wi.title }}</b><small class="mono muted">{{ detail.wi.key }}{% if detail.wi.ticket_key %} · {{ detail.wi.ticket_key }}{% endif %}</small></span>
+        {{ state_badge(detail.wi.state) }}
+      </a>
+      {% endif %}
+      {% if can_write %}
+      <form class="override" method="post" action="/ui/findings/{{ f.id }}/owner">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <b>{{ icon("flag") }}Manual override <small class="muted">sets rule 1, confidence 1.0</small></b>
+        <div class="override-row">
+          <select name="owner" aria-label="New owner">{% for o in owner_choices %}<option value="{{ o }}" {{ 'selected' if o == f.owner_slug }}>@{{ o }}</option>{% endfor %}</select>
+          <select name="match" aria-label="Applies to"><option value="asset">every finding on this asset</option><option value="finding">this finding only</option></select>
+        </div>
+        <input name="reason" placeholder="Reason (kept in the audit log)" maxlength="500">
+        <button class="btn btn-primary btn-block">{{ icon("check") }}Apply override and rebuild</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h3>{{ icon("merge") }}Deduplication provenance</h3><span class="tag-ok mono">{{ detail.obs_count }} rows → 1 record</span></div>
+      {% for s in detail.sources %}
+      <div class="inset prov mono">
+        <span><span class="tag-{{ 'amber' if loop.index is odd else 'ok' }}">{{ s.s.scanner|upper }}</span> <span class="muted">{{ s.s.scope }}</span></span>
+        <span>{% if s.s.present %}<span class="t-ok">present</span>{% else %}<span class="muted">gone</span>{% endif %} · scan #{{ s.s.last_scan_id }} · {{ s.s.last_seen|ago }}</span>
+      </div>
+      {% endfor %}
+      <dl class="kv mono small">
+        <dt>first seen</dt><dd>{{ f.first_seen|dt }}</dd>
+        <dt>last seen</dt><dd>{{ f.last_seen|dt }}</dd>
+        {% if f.repo %}<dt>repo</dt><dd>{{ f.repo }}</dd>{% endif %}
+        {% if f.path %}<dt>path</dt><dd>{{ f.path }}</dd>{% endif %}
+        {% if f.account_uid %}<dt>account</dt><dd>{{ f.account_uid }} {{ f.region }}</dd>{% endif %}
+        {% for k, v in (f.tags or {})|dictsort %}{% if loop.index <= 6 %}<dt>tag {{ k }}</dt><dd>{{ v }}</dd>{% endif %}{% endfor %}
+      </dl>
+    </section>
+    {% else %}
+    <section class="card empty-note">{{ icon("eye") }}Select a finding to see why it has its owner.</section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

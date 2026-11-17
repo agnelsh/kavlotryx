@@ -1,0 +1,63 @@
+{%- from "_icons.html" import icon -%}
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Kavlotryx{% endblock %} · Kavlotryx</title>
+<link rel="icon" href="/ui/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/kavlo.css">
+<script src="/ui/static/kavlo.js" defer></script>
+</head>
+<body>
+<aside class="side">
+  <a class="brand" href="/ui">
+    <img src="/ui/static/logo.svg" alt="" width="40" height="40">
+    <span class="brand-text">
+      <span class="brand-name"><span>KAVLO<em>TRYX</em></span><span class="pill pill-amber">v{{ version.split('.dev')[0] }}</span></span>
+      <span class="brand-sub">OCSF · ownership · verify</span>
+    </span>
+  </a>
+  <div class="side-metrics">
+    <div><span>Noise redux</span><b class="t-ok">{{ (metrics.noise_reduction ~ ':1') if metrics.noise_reduction else '—' }}</b></div>
+    <div><span>Owner acc</span><b class="t-amber">{{ (metrics.ownership_accuracy_pct ~ '%') if metrics.ownership_accuracy_pct is not none else '—' }}</b></div>
+    <div><span>Coverage</span><b class="t-ok">{{ (metrics.assignment_coverage_pct ~ '%') if metrics.assignment_coverage_pct is not none else '—' }}</b></div>
+  </div>
+  <nav class="nav">
+    {%- for href, ic, label in [("/ui", "dashboard", "Remediation overview"), ("/ui/findings", "fingerprint", "Findings & ownership"), ("/ui/workitems", "sync", "Work items & Jira"), ("/ui/verify", "verified", "Verification & ingest")] %}
+    {%- set active = (path == href) or (href != "/ui" and path.startswith(href)) %}
+    <a href="{{ href }}" class="{{ 'active' if active }}" {% if active %}aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+    {%- endfor %}
+  </nav>
+  <div class="side-foot">
+    <div><span><i class="dot dot-ok"></i>{{ dialect|upper }}{{ ' JSONB' if dialect == 'postgresql' }}</span><span class="t-amber">OCSF {{ ocsf_version }}</span></div>
+    <div class="muted"><span>kavlotryx {{ version }}</span><span>Apache-2.0</span></div>
+  </div>
+</aside>
+<div class="frame">
+  <header class="top">
+    <div class="top-left">
+      <span class="chip"><i class="dot dot-ok"></i><b>{{ tracker }}</b><span class="sep">·</span><span class="t-amber">OCSF {{ ocsf_version }}</span></span>
+      {% if auth_off %}<span class="chip chip-warn">{{ icon("warning") }}auth off (local)</span>{% endif %}
+    </div>
+    <div class="top-right">
+      <form class="search" action="/ui/findings" method="get" role="search">
+        {{ icon("search") }}<input name="q" placeholder="Filter findings, CVEs, owners…" aria-label="Search findings">
+      </form>
+      <a class="btn btn-ghost" href="/docs" target="_blank" rel="noopener">{{ icon("terminal") }}API docs</a>
+      <button class="btn btn-icon" type="button" data-theme-toggle title="Switch light or dark" aria-label="Switch light or dark">{{ icon("moon") }}</button>
+      <div class="who">
+        <span class="who-text"><b>{{ who.name }}</b><small>{{ who.role }}</small></span>
+        {% if not auth_off %}
+        <form method="post" action="/ui/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-icon" title="Sign out" aria-label="Sign out">{{ icon("logout") }}</button></form>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+  <main class="main">
+    {% if flash %}<div class="flash flash-{{ flash.kind }}" role="status">{{ icon("check" if flash.kind == "ok" else "warning") }}<span>{{ flash.text }}</span></div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>
