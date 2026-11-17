@@ -1,9 +1,15 @@
 """Microsoft Graph connector.
 
-Live mode uses the OAuth 2.0 client-credentials flow (application permission
-GroupMember.Read.All). It reads only the groups named in
-``connectors.graph.group_map`` and their transitive user members, so the
-cache holds just the people who can resolve to an owner.
+Live mode uses the OAuth 2.0 client-credentials flow. It reads only the
+groups named in ``connectors.graph.group_map``:
+
+- their transitive user members (GroupMember.Read.All), who can resolve to an owner;
+- their owners, who lead the team (GroupMember.Read.All);
+- the ``manager`` chain above those people, ``manager_levels`` deep
+  (User.Read.All), batched through ``$batch`` 20 requests at a time.
+
+The people view (``kavlotryx.core.people``) builds leaders and engineers from
+this cache. Owner resolution itself still uses group membership only.
 """
 
 from __future__ import annotations
@@ -24,7 +30,8 @@ from kavlotryx.db import ConnectorRun, DirectoryPerson, utcnow
 GRAPH = "https://graph.microsoft.com/v1.0"
 TENANT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{0,253}$")
 GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")
-USER_FIELDS = "id,displayName,mail,userPrincipalName,mailNickname,department"
+USER_FIELDS = "id,displayName,mail,userPrincipalName,mailNickname,department,jobTitle"
+BATCH = 20
 
 
 class GraphClient(HttpClient):
@@ -71,12 +78,44 @@ class GraphClient(HttpClient):
         return self.get_all(f"{GRAPH}/groups/{group_id}/transitiveMembers/microsoft.graph.user"
                             f"?$select={USER_FIELDS}&$top=999")
 
+    def owners(self, group_id: str) -> list[dict[str, Any]]:
+        return self.get_all(f"{GRAPH}/groups/{group_id}/owners/microsoft.graph.user?$select={USER_FIELDS}")
 
-def _fetch_live(client: GraphClient, cfg: OwnershipConfig) -> tuple[list[dict[str, Any]], int, list[str]]:
+    def managers(self, user_ids: list[str]) -> dict[str, dict[str, Any] | None]:
+        """Each user's manager, through JSON batching. ``None`` means no manager is set."""
+        out: dict[str, dict[str, Any] | None] = {}
+        for i in range(0, len(user_ids), BATCH):
+            chunk = user_ids[i:i + BATCH]
+            reqs = [{"id": str(n), "method": "GET",
+                     "url": f"/users/{quote(uid, safe='')}/manager?$select={USER_FIELDS}"}
+                    for n, uid in enumerate(chunk)]
+            data = self.request("POST", f"{GRAPH}/$batch", json={"requests": reqs},
+                                headers={"Authorization": f"Bearer {self.token()}"}).json()
+            for r in data.get("responses") or []:
+                try:
+                    uid = chunk[int(r.get("id"))]
+                except (TypeError, ValueError, IndexError):
+                    continue
+                status = int(r.get("status") or 0)
+                if status == 200 and isinstance(r.get("body"), dict) and r["body"].get("id"):
+                    out[uid] = r["body"]
+                elif status == 404:
+                    out[uid] = None
+                else:
+                    raise ConnectorError(f"manager lookup failed: HTTP {status}")
+        return out
+
+
+def _fetch_live(client: GraphClient, cfg: OwnershipConfig) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    gcfg = cfg.connectors.graph
     people: dict[str, dict[str, Any]] = {}
+
+    def add(u: dict[str, Any]) -> dict[str, Any]:
+        return people.setdefault(u["id"], {**u, "groups": set(), "leads": set()})
+
     missing: list[str] = []
     found = 0
-    for key in cfg.connectors.graph.group_map:
+    for key in gcfg.group_map:
         group = client.find_group(key)
         if group is None:
             missing.append(key)
@@ -84,10 +123,34 @@ def _fetch_live(client: GraphClient, cfg: OwnershipConfig) -> tuple[list[dict[st
         found += 1
         labels = {group.get("displayName") or "", group["id"], key}
         for u in client.members(group["id"]):
-            p = people.setdefault(u["id"], {**u, "groups": set()})
-            p["groups"].update(x for x in labels if x)
-    out = [{**p, "groups": sorted(p["groups"])} for p in people.values()]
-    return out, found, missing
+            add(u)["groups"].update(x for x in labels if x)
+        if gcfg.read_group_owners:
+            for u in client.owners(group["id"]):
+                add(u)["leads"].add(group.get("displayName") or key)
+
+    todo = list(people)
+    with_manager = 0
+    for _ in range(gcfg.manager_levels):
+        if not todo:
+            break
+        found_mgrs = client.managers(todo)
+        nxt: list[str] = []
+        for uid, mgr in found_mgrs.items():
+            if mgr is None:
+                continue
+            people[uid]["managerId"] = mgr["id"]
+            with_manager += 1
+            if mgr["id"] not in people:
+                add(mgr)
+                nxt.append(mgr["id"])
+        todo = nxt
+    out = [{**p, "groups": sorted(p["groups"]), "leads": sorted(p["leads"])} for p in people.values()]
+    counts: dict[str, Any] = {"groups": found}
+    if gcfg.manager_levels:
+        counts["with_manager"] = with_manager
+    if missing:
+        counts["groups_not_found"] = missing
+    return out, counts
 
 
 def sync_graph(session: Session, settings: Settings, cfg: OwnershipConfig, actor: str = "system",
@@ -101,11 +164,11 @@ def sync_graph(session: Session, settings: Settings, cfg: OwnershipConfig, actor
 
     def work() -> dict[str, Any]:
         if mode == "snapshot":
-            rows, groups, missing = load_snapshot(settings.graph_snapshot, "people"), None, []
+            rows, extra = load_snapshot(settings.graph_snapshot, "people"), {}
         else:
             c = client or GraphClient(settings.graph_tenant_id, settings.graph_client_id,
                                       settings.graph_client_secret)
-            rows, groups, missing = _fetch_live(c, cfg)
+            rows, extra = _fetch_live(c, cfg)
         now = utcnow()
         session.execute(delete(DirectoryPerson))
         for r in rows:
@@ -115,13 +178,9 @@ def sync_graph(session: Session, settings: Settings, cfg: OwnershipConfig, actor
             session.add(DirectoryPerson(
                 id=pid, upn=str(r.get("userPrincipalName") or "").lower(), mail=str(r.get("mail") or "").lower(),
                 nickname=str(r.get("mailNickname") or "").lower(), display_name=str(r.get("displayName") or ""),
-                department=str(r.get("department") or ""), groups=[str(g) for g in r.get("groups") or []],
-                synced_at=now))
-        counts: dict[str, Any] = {"people": len(rows)}
-        if groups is not None:
-            counts["groups"] = groups
-        if missing:
-            counts["groups_not_found"] = missing
-        return counts
+                department=str(r.get("department") or ""), job_title=str(r.get("jobTitle") or ""),
+                manager_id=str(r.get("managerId") or ""), groups=[str(g) for g in r.get("groups") or []],
+                leads=[str(g) for g in r.get("leads") or []], synced_at=now))
+        return {"people": len(rows), **extra}
 
     return record_run(session, "graph", mode, actor, work)

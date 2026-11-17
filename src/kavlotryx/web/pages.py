@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from kavlotryx.config import EDITABLE_POLICY_KEYS, OwnershipConfig, PolicyConfig, Settings
 from kavlotryx.connectors import CONNECTORS, connector_mode, last_runs
+from kavlotryx.core import people
 from kavlotryx.db import (
     AuditEvent,
     CatalogApp,
@@ -235,6 +236,7 @@ class VulnFilter:
     wi_state: str = ""
     ticket: str = ""
     age: int = 0
+    person: str = ""
     sort: str = "sev"
     dir: str = "desc"
     page: int = 1
@@ -263,7 +265,8 @@ class VulnFilter:
     def chips(self) -> list[tuple[str, str]]:
         labels = {"q": "search", "kind": "kind", "scanner": "scanner", "owner": "owner", "rule": "rule",
                   "conf": "confidence", "account": "account", "artifact": "artifact", "fix": "fix available",
-                  "prod": "production", "wi_state": "work item", "ticket": "has ticket", "age": "first seen ≤ days"}
+                  "prod": "production", "wi_state": "work item", "ticket": "has ticket", "age": "first seen ≤ days",
+                  "person": "person"}
         out: list[tuple[str, str]] = []
         if self.sev:
             names = ", ".join(sev_name(x) for x in sorted(self.sev, reverse=True))
@@ -277,7 +280,9 @@ class VulnFilter:
         return out
 
 
-def _apply(q, f: VulnFilter, policy: PolicyConfig):
+def _apply(q, f: VulnFilter, policy: PolicyConfig, ids: set[int] | None = None):
+    if ids is not None:
+        q = q.where(Finding.id.in_(ids or {-1}))
     if f.status:
         q = q.where(Finding.status == f.status)
     if f.sev:
@@ -325,9 +330,16 @@ def _apply(q, f: VulnFilter, policy: PolicyConfig):
     return q
 
 
-def explorer(s: Session, f: VulnFilter, policy: PolicyConfig, limit_all: int | None = None) -> dict[str, Any]:
-    base = _apply(select(Finding), f, policy)
-    ids = _apply(select(Finding.id), f, policy).subquery()
+def explorer(s: Session, f: VulnFilter, policy: PolicyConfig, limit_all: int | None = None,
+             cfg: OwnershipConfig | None = None) -> dict[str, Any]:
+    pids: set[int] | None = None
+    person_name = ""
+    if f.person and cfg is not None:
+        pids = people.findings_for(s, cfg, f.person) or set()
+        dp = s.get(DirectoryPerson, f.person)
+        person_name = dp.display_name if dp else ""
+    base = _apply(select(Finding), f, policy, pids)
+    ids = _apply(select(Finding.id), f, policy, pids).subquery()
     total = s.scalar(select(func.count()).select_from(ids)) or 0
     col = SORTS.get(f.sort, Finding.severity_id)
     order = [col.desc() if f.dir == "desc" else col.asc(), Finding.severity_id.desc(), Finding.id]
@@ -360,7 +372,7 @@ def explorer(s: Session, f: VulnFilter, policy: PolicyConfig, limit_all: int | N
                                  .where(FindingSource.finding_id.in_([r.id for r in rows]))):
             srcs[fid].append(sc)
     return {"rows": rows, "total": total, "page": page, "pages": pages, "size": size, "facet": facet,
-            "items": items, "sources": srcs}
+            "items": items, "sources": srcs, "person_name": person_name}
 
 
 def csv_safe(v: Any) -> str:
@@ -417,6 +429,41 @@ def ownership(s: Session, cfg: OwnershipConfig, policy: PolicyConfig, settings: 
             "graph_groups": graph_groups, "apps": app_rows, "connectors": connectors, "review_rows": review_rows,
             "overrides": overrides, "person_hits": person_hits,
             "coverage": pct(sum(1 for f in open_f if not f.needs_review), len(open_f)) if open_f else None}
+
+
+# -- ownership: people -----------------------------------------------------------------
+
+
+def people_page(s: Session, cfg: OwnershipConfig, settings: Settings) -> dict[str, Any]:
+    org = people.build(s, cfg)
+    rows = [org.rows[pid] for pid in org.order]
+    leaders = [r for r in rows if r.role == "leader"]
+    runs = last_runs(s)
+    return {"org": org, "rows": rows, "leaders": leaders,
+            "engineers": sum(1 for r in rows if r.role == "engineer"),
+            "graph": {"mode": connector_mode(settings, "graph"), "run": runs["graph"]},
+            "has_managers": any(r.p.manager_id for r in rows), "has_leads": any(r.leads for r in rows),
+            "reach_pct": pct(org.reached_total, org.total_open) if org.total_open else None,
+            "led_pct": pct(org.led_total, org.total_open) if org.total_open else None}
+
+
+def person_page(s: Session, cfg: OwnershipConfig, pid: str) -> dict[str, Any] | None:
+    org = people.build(s, cfg)
+    row = org.rows.get(pid)
+    if row is None:
+        return None
+
+    def load(ids: set[int], limit: int = 40) -> list[Finding]:
+        if not ids:
+            return []
+        return s.scalars(select(Finding).where(Finding.id.in_(ids))
+                         .order_by(Finding.severity_id.desc(), Finding.first_seen).limit(limit)).all()
+
+    reports = sorted((org.rows[c] for c in row.reports), key=lambda r: (-r.stats.critical, -r.stats.total))
+    by_owner = Counter(f.owner_slug for f in load(row.findings, 100000))
+    return {"r": row, "chain": org.chain(pid), "reports": reports, "named_rows": load(row.named),
+            "team_rows": load(row.team - row.named), "rollup_rows": load(row.rollup),
+            "by_owner": by_owner.most_common()}
 
 
 # -- scanners ---------------------------------------------------------------------------

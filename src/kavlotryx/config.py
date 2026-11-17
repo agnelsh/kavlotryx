@@ -56,6 +56,10 @@ class GraphConnectorConfig(BaseModel):
 
     group_map: dict[str, str] = Field(default_factory=dict)  # group display name or id -> owner slug
     person_tag_keys: list[str] = Field(default_factory=lambda: ["owner", "contact", "created-by"])
+    # People view: walk the Entra "manager" chain this many levels above group
+    # members (needs User.Read.All). 0 turns it off.
+    manager_levels: int = Field(default=3, ge=0, le=6)
+    read_group_owners: bool = True  # Entra group owners are the team's leads
 
 
 class LeanixConnectorConfig(BaseModel):

@@ -73,3 +73,14 @@
 <label class="field"><span>{{ label }} <small class="src">{{ sources[name] }}</small></span>
   <input type="{{ type }}" name="{{ name }}" value="{{ value }}" {{ attrs|safe }}><small class="muted">{{ help }}</small></label>
 {% endmacro %}
+
+{% macro owner_tabs(active) %}
+<nav class="tabs tabs-lg page-tabs" aria-label="Ownership">
+  <a class="{{ 'on' if active == 'teams' }}" href="/ui/ownership">{{ icon("tree") }}Teams &amp; rules</a>
+  <a class="{{ 'on' if active == 'people' }}" href="/ui/ownership/people">{{ icon("users") }}Leaders &amp; engineers</a>
+</nav>
+{% endmacro %}
+
+{% macro sev_counts(st) %}
+<span class="sev-counts mono">{% if st.critical %}<b class="t-crit">{{ st.critical }} C</b>{% endif %}{% if st.high %}<b class="t-orange">{{ st.high }} H</b>{% endif %}{% if not st.critical and not st.high %}<span class="muted">—</span>{% endif %}</span>
+{% endmacro %}

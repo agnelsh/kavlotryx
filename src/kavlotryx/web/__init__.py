@@ -196,11 +196,11 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
 
     def _filter(q: str, sev: list[int], kind: str, status: str, scanner: str, owner: str, rule: str, conf: str,
                 account: str, artifact: str, fix: str, prod: str, wi_state: str, ticket: str, age: int, sort: str,
-                dir: str, page: int, size: int) -> pages.VulnFilter:
+                dir: str, page: int, size: int, person: str = "") -> pages.VulnFilter:
         return pages.VulnFilter(q=q[:200], sev=[x for x in sev if 0 <= x <= 6], kind=kind, status=status,
                                 scanner=scanner, owner=owner, rule=rule, conf=conf, account=account,
                                 artifact=artifact[:200], fix=fix, prod=prod, wi_state=wi_state, ticket=ticket,
-                                age=max(0, age), sort=sort if sort in pages.SORTS else "sev",
+                                age=max(0, age), person=person[:128], sort=sort if sort in pages.SORTS else "sev",
                                 dir="asc" if dir == "asc" else "desc", page=page, size=size)
 
     @app.get("/ui/vulnerabilities", include_in_schema=False)
@@ -208,12 +208,12 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                         status: str = "open", scanner: str = "", owner: str = "", rule: str = "", conf: str = "",
                         account: str = "", artifact: str = "", fix: str = "", prod: str = "", wi_state: str = "",
                         ticket: str = "", age: int = 0, sort: str = "sev", dir: str = "desc", page: int = 1,
-                        size: int = 50):
+                        size: int = 50, person: str = ""):
         who = session.current(request)
         flt = _filter(q, sev, kind, status, scanner, owner, rule, conf, account, artifact, fix, prod, wi_state,
-                      ticket, age, sort, dir, page, size)
+                      ticket, age, sort, dir, page, size, person)
         with svc.session() as s:
-            data = pages.explorer(s, flt, svc.policy)
+            data = pages.explorer(s, flt, svc.policy, cfg=svc.ownership)
         return render(request, "vulnerabilities.html", {"flt": flt, "owners": [o.slug for o in svc.ownership.owners],
                                                         "adapters": sorted(available_adapters()),
                                                         "states": views.STATES, "rule_ladder": views.RULE_LADDER,
@@ -224,12 +224,12 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                             status: str = "open", scanner: str = "", owner: str = "", rule: str = "",
                             conf: str = "", account: str = "", artifact: str = "", fix: str = "", prod: str = "",
                             wi_state: str = "", ticket: str = "", age: int = 0, sort: str = "sev",
-                            dir: str = "desc"):
+                            dir: str = "desc", person: str = ""):
         session.current(request)
         flt = _filter(q, sev, kind, status, scanner, owner, rule, conf, account, artifact, fix, prod, wi_state,
-                      ticket, age, sort, dir, 1, 50)
+                      ticket, age, sort, dir, 1, 50, person)
         with svc.session() as s:
-            rows = pages.explorer(s, flt, svc.policy, limit_all=50000)["rows"]
+            rows = pages.explorer(s, flt, svc.policy, limit_all=50000, cfg=svc.ownership)["rows"]
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["id", "severity", "kind", "status", "vulnerability_or_rule", "package", "installed", "fixed",
@@ -307,6 +307,22 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             data = pages.ownership(s, svc.ownership, svc.policy, settings)
         return render(request, "ownership.html", {**data, "limit": svc.policy.confidence_limit,
                                                   "cfg": svc.ownership}, who)
+
+    @app.get("/ui/ownership/people", include_in_schema=False)
+    def people_view(request: Request):
+        who = session.current(request)
+        with svc.session() as s:
+            data = pages.people_page(s, svc.ownership, settings)
+        return render(request, "people.html", {**data, "cfg": svc.ownership}, who)
+
+    @app.get("/ui/ownership/people/{pid}", include_in_schema=False)
+    def person_view(request: Request, pid: str):
+        who = session.current(request)
+        with svc.session() as s:
+            data = pages.person_page(s, svc.ownership, pid[:128])
+        if data is None:
+            return render(request, "notfound.html", {"what": "person"}, who, status=404)
+        return render(request, "person.html", data, who)
 
     @app.post("/ui/connectors/{name}/sync", include_in_schema=False)
     def connector_sync(request: Request, name: str, csrf: str = Form("")):

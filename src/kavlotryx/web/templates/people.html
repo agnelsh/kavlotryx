@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, mode_badge %}
+{% from "_parts.html" import owner_tabs, sev_counts, run_line with context %}
+{% block title %}Leaders & engineers{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Ownership · <span class="t-violet">Microsoft Graph</span></div>
+    <h1>Leaders and engineers</h1>
+    <p class="lede">Open findings mapped to people. Engineers get the findings named to them and their team's queue. Leaders, from Entra group owners and the manager chain, get everything below them.</p>
+  </div>
+  <div class="head-actions">{{ mode_badge(graph.mode) }}</div>
+</section>
+
+{{ owner_tabs("people") }}
+
+{% if not rows %}
+<section class="card empty">
+  <h2>{{ icon("users") }}No people synced yet</h2>
+  <p class="muted">Sync Microsoft Graph to load the members and owners of the Entra groups in <code>connectors.graph.group_map</code>, and their managers.</p>
+  <a class="btn" href="/ui/ownership#connectors">Go to the Microsoft Graph connector</a>
+</section>
+{% else %}
+
+<section class="kpis">
+  <div class="kpi"><span class="kpi-label">People</span><b class="kpi-value">{{ rows|length }}</b><span class="kpi-note">{{ leaders|length }} leaders · {{ engineers }} engineers</span></div>
+  <div class="kpi kpi-ok"><span class="kpi-label">Reach a person</span><b class="kpi-value t-ok">{{ (reach_pct ~ '%') if reach_pct is not none else '—' }}</b><span class="kpi-note">{{ org.reached_total }} of {{ org.total_open }} open findings</span></div>
+  <div class="kpi"><span class="kpi-label">Reach a leader</span><b class="kpi-value">{{ (led_pct ~ '%') if led_pct is not none else '—' }}</b><span class="kpi-note">{{ org.led_total }} findings with a lead or manager</span></div>
+  <a class="kpi" href="/ui/vulnerabilities?rule=directory"><span class="kpi-label">Named engineer</span><b class="kpi-value">{{ org.named_total }}</b><span class="kpi-note">tag or LeanIX names one person</span></a>
+  <div class="kpi {{ 'kpi-warn' if org.unreached }}"><span class="kpi-label">Reach nobody</span><b class="kpi-value {{ 't-amber' if org.unreached }}">{{ org.total_open - org.reached_total }}</b><span class="kpi-note">owner has no people in Entra</span></div>
+</section>
+
+{% if not has_managers or not has_leads %}
+<p class="inset small muted">{{ icon("warning") }}
+  {% if not has_managers %}No manager data in the cache, so leaders come only from Entra group owners. Live sync reads managers with <code>User.Read.All</code> (<code>manager_levels</code>).{% endif %}
+  {% if not has_leads %}No Entra group owners in the cache, so team leads come only from the manager chain.{% endif %}
+</p>
+{% endif %}
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("tree") }}Organisation <span class="pill mono">from Entra managers and group owners</span></h2>
+    <span class="muted small mono">click a person for their findings</span></div>
+  <div class="tbl-wrap"><table class="tbl org">
+    <thead><tr><th>Person</th><th>Role</th><th>Teams</th><th class="num">Named</th><th class="num">Team queue</th><th class="num">Roll-up</th><th>Critical / High</th><th class="num">Overdue</th><th class="num">Oldest</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr class="org-row role-{{ r.role }}">
+      <td><div class="org-name" data-depth="{{ [r.depth, 6]|min }}">
+        {% if r.depth %}<span class="org-branch" aria-hidden="true">└</span>{% endif %}
+        <span class="avatar">{{ r.p.display_name[:1] }}</span>
+        <span><a class="plain strong" href="/ui/ownership/people/{{ r.p.id }}">{{ r.p.display_name }}</a><br><small class="muted">{{ r.p.job_title or r.p.department or (r.p.upn or r.p.mail) }}</small></span></div></td>
+      <td>{% if r.role == 'leader' %}<span class="tag-violet">Leader</span>{% else %}<span class="pill">Engineer</span>{% endif %}
+        {% if r.reports %}<br><small class="muted mono">{{ r.reports|length }} report{{ 's' if r.reports|length != 1 }}</small>{% endif %}</td>
+      <td class="small">{% for o in r.leads %}<span class="owner-tag" title="leads">★ @{{ o }}</span> {% endfor %}{% for o in r.teams if o not in r.leads %}<span class="owner-tag">@{{ o }}</span> {% endfor %}{% if not r.teams and not r.leads %}<span class="muted">{{ 'through reports' if r.reports else 'no mapped group' }}</span>{% endif %}</td>
+      <td class="num mono">{{ r.named|length or '·' }}</td>
+      <td class="num mono">{{ r.team|length or '·' }}</td>
+      <td class="num mono strong">{{ r.rollup|length if r.role == 'leader' else '·' }}</td>
+      <td>{{ sev_counts(r.stats) }}</td>
+      <td class="num mono {{ 't-crit' if r.stats.overdue }}">{{ r.stats.overdue or '·' }}</td>
+      <td class="num mono muted">{{ (r.stats.oldest_days ~ 'd') if r.stats.oldest_days is not none else '·' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted small">Named: a tag (<code>{{ cfg.connectors.graph.person_tag_keys|join('</code>, <code>') }}</code>) or LeanIX names this person. Team queue: every open finding of the owner their Entra group maps to. Roll-up: every finding of the teams they lead and the people below them. Critical, High, Overdue and Oldest count the roll-up for leaders and named + team for engineers.</p>
+</section>
+
+{% if org.unreached %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("flag") }}Findings that reach nobody</h2><span class="muted small">map an Entra group in <code>connectors.graph.group_map</code></span></div>
+  <table class="tbl"><thead><tr><th>Owner</th><th>Why</th><th class="num">Open findings</th></tr></thead><tbody>
+  {% for g in org.unreached %}<tr><td><a class="owner-tag" href="/ui/vulnerabilities?owner={{ g.owner }}">@{{ g.owner }}</a></td><td class="small">{{ g.why }}</td><td class="num mono">{{ g.findings }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+
+<section class="card">
+  {{ run_line(graph) }}
+</section>
+{% endif %}
+{% endblock %}

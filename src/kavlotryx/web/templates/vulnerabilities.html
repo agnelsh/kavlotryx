@@ -17,6 +17,7 @@
 {{ vuln_tabs("findings") }}
 
 <form class="card filters" method="get" action="/ui/vulnerabilities">
+  {% if flt.person %}<input type="hidden" name="person" value="{{ flt.person }}">{% endif %}
   <div class="filters-row">
     <label class="search-lg">{{ icon("search") }}<input name="q" value="{{ flt.q }}" placeholder="CVE, package, asset, rule, fingerprint, owner or artifact"></label>
     <fieldset class="sevs" aria-label="Severity">
@@ -47,7 +48,7 @@
   {% set chips = flt.chips() %}
   {% if chips %}
   <div class="scope"><b>Active filter scope:</b>
-    {% for label, qs in chips %}<a class="scope-chip" href="/ui/vulnerabilities?{{ qs }}">{{ label }} {{ icon("x") }}</a>{% endfor %}
+    {% for label, qs in chips %}<a class="scope-chip" href="/ui/vulnerabilities?{{ qs }}">{{ ("person: " ~ person_name) if label.startswith("person: ") and person_name else label }} {{ icon("x") }}</a>{% endfor %}
     <a class="link scope-clear" href="/ui/vulnerabilities">Clear all</a></div>
   {% endif %}
 </form>

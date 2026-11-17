@@ -1,13 +1,16 @@
 {
-  "_comment": "Made-up Entra ID people and groups for the sample demo (KAVLO_GRAPH_SNAPSHOT). Same shape the live sync stores.",
+  "_comment": "Made-up Entra ID people, groups, group owners (leads) and managers for the sample demo (KAVLO_GRAPH_SNAPSHOT). Same shape the live sync stores.",
   "people": [
-    {"id": "11111111-0000-4000-8000-000000000001", "userPrincipalName": "jd@example.com", "mail": "jd@example.com",
-     "mailNickname": "JD", "displayName": "Jordan Diaz", "department": "Storefront", "groups": ["sg-app-team"]},
-    {"id": "11111111-0000-4000-8000-000000000002", "userPrincipalName": "sam.okafor@example.com", "mail": "sam.okafor@example.com",
-     "mailNickname": "sam.okafor", "displayName": "Sam Okafor", "department": "Cloud Platform", "groups": ["sg-platform-engineering"]},
-    {"id": "11111111-0000-4000-8000-000000000003", "userPrincipalName": "maria.lopez@example.com", "mail": "maria.lopez@example.com",
-     "mailNickname": "maria.lopez", "displayName": "Maria Lopez", "department": "Identity & Access", "groups": ["sg-identity"]},
-    {"id": "11111111-0000-4000-8000-000000000004", "userPrincipalName": "lee.chen@example.com", "mail": "lee.chen@example.com",
-     "mailNickname": "lee.chen", "displayName": "Lee Chen", "department": "Finance IT", "groups": ["sg-finance-it"]}
+    {"id": "11111111-0000-4000-8000-000000000001", "userPrincipalName": "jd@example.com", "mail": "jd@example.com", "mailNickname": "JD", "displayName": "Jordan Diaz", "department": "Storefront", "jobTitle": "Senior Software Engineer", "groups": ["sg-app-team"], "leads": [], "managerId": "11111111-0000-4000-8000-000000000005"},
+    {"id": "11111111-0000-4000-8000-000000000002", "userPrincipalName": "sam.okafor@example.com", "mail": "sam.okafor@example.com", "mailNickname": "sam.okafor", "displayName": "Sam Okafor", "department": "Cloud Platform", "jobTitle": "Platform Engineering Lead", "groups": ["sg-platform-engineering"], "leads": ["sg-platform-engineering"], "managerId": "11111111-0000-4000-8000-000000000009"},
+    {"id": "11111111-0000-4000-8000-000000000003", "userPrincipalName": "maria.lopez@example.com", "mail": "maria.lopez@example.com", "mailNickname": "maria.lopez", "displayName": "Maria Lopez", "department": "Identity & Access", "jobTitle": "Identity Engineering Manager", "groups": ["sg-identity"], "leads": ["sg-identity"], "managerId": "11111111-0000-4000-8000-000000000010"},
+    {"id": "11111111-0000-4000-8000-000000000004", "userPrincipalName": "lee.chen@example.com", "mail": "lee.chen@example.com", "mailNickname": "lee.chen", "displayName": "Lee Chen", "department": "Finance IT", "jobTitle": "Finance Systems Engineer", "groups": ["sg-finance-it"], "leads": []},
+    {"id": "11111111-0000-4000-8000-000000000005", "userPrincipalName": "priya.nair@example.com", "mail": "priya.nair@example.com", "mailNickname": "priya.nair", "displayName": "Priya Nair", "department": "Storefront", "jobTitle": "Engineering Manager, Storefront", "groups": [], "leads": ["sg-app-team"], "managerId": "11111111-0000-4000-8000-000000000009"},
+    {"id": "11111111-0000-4000-8000-000000000006", "userPrincipalName": "noah.kim@example.com", "mail": "noah.kim@example.com", "mailNickname": "noah.kim", "displayName": "Noah Kim", "department": "Storefront", "jobTitle": "Software Engineer", "groups": ["sg-app-team"], "leads": [], "managerId": "11111111-0000-4000-8000-000000000005"},
+    {"id": "11111111-0000-4000-8000-000000000007", "userPrincipalName": "elena.petrova@example.com", "mail": "elena.petrova@example.com", "mailNickname": "elena.petrova", "displayName": "Elena Petrova", "department": "Cloud Platform", "jobTitle": "Site Reliability Engineer", "groups": ["sg-platform-engineering"], "leads": [], "managerId": "11111111-0000-4000-8000-000000000002"},
+    {"id": "11111111-0000-4000-8000-000000000008", "userPrincipalName": "kofi.mensah@example.com", "mail": "kofi.mensah@example.com", "mailNickname": "kofi.mensah", "displayName": "Kofi Mensah", "department": "Cloud Platform", "jobTitle": "Cloud Engineer", "groups": ["sg-platform-engineering"], "leads": [], "managerId": "11111111-0000-4000-8000-000000000002"},
+    {"id": "11111111-0000-4000-8000-000000000009", "userPrincipalName": "avery.brooks@example.com", "mail": "avery.brooks@example.com", "mailNickname": "avery.brooks", "displayName": "Avery Brooks", "department": "Engineering", "jobTitle": "VP Engineering", "groups": [], "leads": []},
+    {"id": "11111111-0000-4000-8000-000000000010", "userPrincipalName": "dana.whitfield@example.com", "mail": "dana.whitfield@example.com", "mailNickname": "dana.whitfield", "displayName": "Dana Whitfield", "department": "Security", "jobTitle": "CISO", "groups": [], "leads": []},
+    {"id": "11111111-0000-4000-8000-000000000011", "userPrincipalName": "tomas.novak@example.com", "mail": "tomas.novak@example.com", "mailNickname": "tomas.novak", "displayName": "Tomas Novak", "department": "Identity & Access", "jobTitle": "IAM Engineer", "groups": ["sg-identity"], "leads": [], "managerId": "11111111-0000-4000-8000-000000000003"}
   ]
 }

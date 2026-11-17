@@ -202,7 +202,10 @@ class DirectoryPerson(Base):
     nickname: Mapped[str] = mapped_column(String(128), default="", index=True)
     display_name: Mapped[str] = mapped_column(String(256), default="")
     department: Mapped[str] = mapped_column(String(256), default="")
+    job_title: Mapped[str] = mapped_column(String(256), default="")
+    manager_id: Mapped[str] = mapped_column(String(128), default="", index=True)  # Entra "manager"
     groups: Mapped[list[str]] = mapped_column(JsonType, default=list)  # group display names
+    leads: Mapped[list[str]] = mapped_column(JsonType, default=list)  # groups this person owns in Entra
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -252,7 +255,22 @@ def make_engine(url: str) -> Engine:
     return engine
 
 
+# Tables that only cache connector data. When a release adds columns to one,
+# ``init_db`` drops and recreates it; the next connector sync fills it again.
+CACHE_TABLES = ("directory_people", "catalog_apps")
+
+
 def init_db(engine: Engine) -> None:
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    for name in CACHE_TABLES:
+        if not insp.has_table(name):
+            continue
+        have = {c["name"] for c in insp.get_columns(name)}
+        table = Base.metadata.tables[name]
+        if not {c.name for c in table.columns} <= have:
+            table.drop(engine)
     Base.metadata.create_all(engine)
 
 

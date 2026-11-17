@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, mode_badge %}
-{% from "_parts.html" import run_line, sync_button with context %}
+{% from "_parts.html" import run_line, sync_button, owner_tabs with context %}
 {% block title %}Ownership{% endblock %}
 {% block content %}
 <section class="head">
@@ -15,6 +15,8 @@
   </div>
   {% endif %}
 </section>
+
+{{ owner_tabs("teams") }}
 
 <section class="kpis kpis-4">
   <div class="kpi"><span class="kpi-label">Owners</span><b class="kpi-value">{{ cfg.owners|length }}</b><span class="kpi-note">teams in ownership.yaml</span></div>
@@ -62,7 +64,7 @@
       <h2><span class="conn-logo">MS</span>Microsoft Graph</h2>
       {{ mode_badge(connectors.graph.mode) }}
     </div>
-    <p class="muted small">A tag that names a person ({% for k in cfg.connectors.graph.person_tag_keys %}<code>{{ k }}</code>{{ ', ' if not loop.last }}{% endfor %}) resolves through that person's Entra ID groups to a team. Rule 3, confidence 0.80.</p>
+    <p class="muted small"><a class="link" href="/ui/ownership/people">Leaders &amp; engineers view</a> · A tag that names a person ({% for k in cfg.connectors.graph.person_tag_keys %}<code>{{ k }}</code>{{ ', ' if not loop.last }}{% endfor %}) resolves through that person's Entra ID groups to a team. Rule 3, confidence 0.80.</p>
     {{ run_line(connectors.graph) }}
     <table class="tbl">
       <thead><tr><th>Entra group</th><th>Owner</th><th class="num">People synced</th></tr></thead>

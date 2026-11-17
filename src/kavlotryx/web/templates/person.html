@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_parts.html" import owner_tabs, sev_counts, finding_list with context %}
+{% block title %}{{ r.p.display_name }}{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><a class="link" href="/ui/ownership/people">{{ icon("users") }}Leaders &amp; engineers</a>
+      {% for m in chain|reverse %} · <a class="link" href="/ui/ownership/people/{{ m.id }}">{{ m.display_name }}</a>{% endfor %}</div>
+    <h1><span class="avatar avatar-lg">{{ r.p.display_name[:1] }}</span>{{ r.p.display_name }}</h1>
+    <p class="lede">{{ r.p.job_title or 'No job title in Entra ID' }}{% if r.p.department %} · {{ r.p.department }}{% endif %} · <span class="mono">{{ r.p.upn or r.p.mail }}</span></p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-outline" href="/ui/vulnerabilities?person={{ r.p.id|urlencode }}">{{ icon("bug") }}Open in Vulnerabilities</a>
+  </div>
+</section>
+
+{{ owner_tabs("people") }}
+
+<section class="kpis">
+  <div class="kpi"><span class="kpi-label">Role</span><b class="kpi-value">{{ 'Leader' if r.role == 'leader' else 'Engineer' }}</b><span class="kpi-note">{% if r.leads %}leads {% for o in r.leads %}@{{ o }}{{ ', ' if not loop.last }}{% endfor %}{% elif r.reports %}{{ r.reports|length }} direct reports{% else %}{% for o in r.teams %}@{{ o }}{{ ', ' if not loop.last }}{% else %}no mapped group{% endfor %}{% endif %}</span></div>
+  <div class="kpi"><span class="kpi-label">{{ 'Roll-up' if r.role == 'leader' else 'Named + team' }}</span><b class="kpi-value">{{ r.stats.total }}</b><span class="kpi-note">open findings</span></div>
+  <div class="kpi"><span class="kpi-label">Critical / High</span><b class="kpi-value">{{ sev_counts(r.stats) }}</b><span class="kpi-note">severity</span></div>
+  <div class="kpi {{ 'kpi-warn' if r.stats.overdue }}"><span class="kpi-label">Overdue</span><b class="kpi-value {{ 't-crit' if r.stats.overdue }}">{{ r.stats.overdue }}</b><span class="kpi-note">past the work item due date</span></div>
+  <div class="kpi"><span class="kpi-label">Oldest</span><b class="kpi-value">{{ (r.stats.oldest_days ~ 'd') if r.stats.oldest_days is not none else '—' }}</b><span class="kpi-note">since first seen</span></div>
+</section>
+
+{% if reports %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("tree") }}Direct reports</h2></div>
+  <table class="tbl"><thead><tr><th>Person</th><th>Teams</th><th class="num">Open</th><th>Critical / High</th><th class="num">Overdue</th></tr></thead><tbody>
+  {% for c in reports %}<tr><td><a class="plain strong" href="/ui/ownership/people/{{ c.p.id }}">{{ c.p.display_name }}</a><br><small class="muted">{{ c.p.job_title }}</small></td>
+    <td class="small">{% for o in (c.leads + c.teams)|unique %}<span class="owner-tag">@{{ o }}</span> {% else %}<span class="muted">—</span>{% endfor %}</td>
+    <td class="num mono">{{ c.stats.total }}</td><td>{{ sev_counts(c.stats) }}</td><td class="num mono {{ 't-crit' if c.stats.overdue }}">{{ c.stats.overdue or '·' }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+
+<div class="split">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("flag") }}Named to {{ r.p.display_name.split(' ')[0] }} <span class="pill mono">{{ r.named|length }}</span></h2></div>
+    <p class="muted small">A person tag on the asset or the LeanIX responsible person names them.</p>
+    {{ finding_list(named_rows, "No finding names this person.") }}
+  </section>
+  {% if r.role == 'leader' %}
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("layers") }}Roll-up <span class="pill mono">{{ r.rollup|length }}</span></h2>
+      {% if by_owner %}<span class="small">{% for o, n in by_owner %}<span class="owner-tag">@{{ o }} {{ n }}</span> {% endfor %}</span>{% endif %}</div>
+    <p class="muted small">Teams they lead and every person below them. Top 40 by severity.</p>
+    {{ finding_list(rollup_rows, "Nothing open below this leader.") }}
+  </section>
+  {% else %}
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("users") }}Team queue <span class="pill mono">{{ (r.team - r.named)|length }}</span></h2></div>
+    <p class="muted small">Open findings of {% for o in r.teams %}@{{ o }}{{ ', ' if not loop.last }}{% else %}no mapped team{% endfor %} apart from the ones named to them. Top 40 by severity.</p>
+    {{ finding_list(team_rows, "The team queue is empty.") }}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

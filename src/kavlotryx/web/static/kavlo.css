@@ -523,3 +523,17 @@ fieldset[disabled] input, fieldset[disabled] select { opacity: .7; }
 /* explorer cell widths */
 .tbl-dense .cell-main { min-width: 220px; max-width: 340px; }
 .tbl-dense .cell-res { min-width: 200px; max-width: 300px; }
+
+/* -- Ownership · leaders & engineers ------------------------------------------------- */
+.org-name { display: flex; align-items: center; gap: 8px; }
+.org-name[data-depth="1"] { padding-left: 20px; } .org-name[data-depth="2"] { padding-left: 40px; }
+.org-name[data-depth="3"] { padding-left: 60px; } .org-name[data-depth="4"] { padding-left: 80px; }
+.org-name[data-depth="5"] { padding-left: 100px; } .org-name[data-depth="6"] { padding-left: 120px; }
+.org-branch { color: var(--line-2); font-family: var(--mono); margin-right: -2px; }
+.avatar { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; font: 700 12px var(--mono); color: var(--accent-ink); background: var(--primary-grad); }
+.role-engineer .avatar { color: var(--muted); background: var(--inset); border: 1px solid var(--line-2); }
+.avatar-lg { width: 40px; height: 40px; font-size: 17px; margin-right: 12px; vertical-align: middle; }
+.org-row.role-leader td { background: color-mix(in srgb, var(--card-hover) 60%, transparent); }
+.sev-counts { display: inline-flex; gap: 8px; font-size: 12px; }
+.t-orange { color: var(--orange); }
+.tag-violet { white-space: nowrap; }

@@ -83,7 +83,7 @@ To file real Jira Cloud issues, set `KAVLO_JIRA_URL`, `KAVLO_JIRA_EMAIL` and `KA
 
 - **Dashboard**: the pipeline status (stages, scanner freshness, connector syncs, tracker, owner review) and a dashboard per persona. *Vulnerability analyst*: severity and scanner mix, review queue, newest findings. *Engineering team lead*: only their team's work, by due date. *Cloud platform owner*: the fixes that remove the most findings, and the packages and rules that spread widest. *Security manager*: the success measures against their targets, SLA and age, progress by owner. *Change manager*: fixes on production-tagged resources. Each person's choice is remembered; `KAVLO_PERSONAS` sets defaults per token.
 - **Vulnerabilities**: every finding once, with filters for severity, status, kind, scanner, owner, owner rule, confidence, fix availability, production tags, work item state, ticket, age, account and artifact; facet counts; sorting; CSV export (formula-safe). A *Work items* tab holds the tickets, with a proof-of-closure timeline per item.
-- **Ownership**: owners, the rule ladder, the review queue, manual overrides, and the **Microsoft Graph** and **LeanIX** connectors with their mappings and a sync button.
+- **Ownership**: owners, the rule ladder, the review queue, manual overrides, and the **Microsoft Graph** and **LeanIX** connectors with their mappings and a sync button. A *Leaders & engineers* tab maps open findings to people (see below).
 - **Scanners**: freshness per scanner and scope, scan history, upload and verifier decisions.
 - **Settings**: admins edit the remediation policy (confidence limit, due days, dispatch rules, production tags, stale-scan hours); changes are stored in the database and audited. Tracker, connector and token settings are shown as set or not set, never their values. The audit log is here too.
 
@@ -104,7 +104,7 @@ Two connectors add identity and application context. A sync copies what ownershi
 
 | Connector | What it resolves | Live mode | Rule |
 |---|---|---|---|
-| Microsoft Graph | A tag that names a person (`Owner=jd@acme.com`) → their Entra ID groups → a team via `connectors.graph.group_map` | `KAVLO_GRAPH_TENANT_ID`, `KAVLO_GRAPH_CLIENT_ID`, `KAVLO_GRAPH_CLIENT_SECRET`; app permission `GroupMember.Read.All` | 3, confidence 0.80 |
+| Microsoft Graph | A tag that names a person (`Owner=jd@acme.com`) → their Entra ID groups → a team via `connectors.graph.group_map` | `KAVLO_GRAPH_TENANT_ID`, `KAVLO_GRAPH_CLIENT_ID`, `KAVLO_GRAPH_CLIENT_SECRET`; app permissions `GroupMember.Read.All`, and `User.Read.All` for managers | 3, confidence 0.80 |
 | LeanIX | An asset's app tag, image or resource name, or repository → an Application fact sheet → its team (`connectors.leanix.team_map`), or its responsible person through Graph | `KAVLO_LEANIX_HOST`, `KAVLO_LEANIX_TOKEN` (API token, read access) | 5, confidence 0.80 |
 
 The full rule order is: manual override (1.0), team tag (0.9), Microsoft Graph person (0.8), CODEOWNERS (0.85), LeanIX application (0.8), pattern (0.75), account or registry default (0.5). Each connector can also read a JSON snapshot (`KAVLO_GRAPH_SNAPSHOT`, `KAVLO_LEANIX_SNAPSHOT`) for demos and air-gapped installs; see `examples/samples/config/`.
@@ -115,6 +115,17 @@ kavlo connectors status
 ```
 
 The clients are tested against mocked HTTP only; they have not yet run against a live tenant or LeanIX workspace.
+
+#### Leaders and engineers
+
+The Microsoft Graph sync also reads the owners of each mapped Entra group and walks the `manager` chain above everyone it found (`connectors.graph.manager_levels`, default 3; managers are fetched with `$batch`). The *Leaders & engineers* tab under Ownership, and `GET /api/v1/people`, use that to map every open finding to people:
+
+- **Engineers** see the findings *named* to them (the Graph person tag, the LeanIX responsible person, or a person tag on the asset) and their team's queue (every finding of the owner their group maps to).
+- **Leaders** are group owners and anyone with reports. Their roll-up is every finding of the teams they lead and of everyone below them in the manager chain.
+- Each person shows Critical and High counts, overdue work items and the oldest finding. A person page lists their findings and links to Vulnerabilities filtered to that person.
+- Owners with no Entra people are listed as *reach nobody*, so the gap is visible.
+
+This view only reads. It never changes an owner: owner resolution still uses group membership alone.
 
 ### REST API
 

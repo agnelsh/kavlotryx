@@ -41,6 +41,19 @@ def graph_handler(calls: list[str]):
         if "skiptoken=2" in url:
             return httpx.Response(200, json={"value": [{"id": "u2", "mail": "sam@example.com",
                                                         "displayName": "Sam"}]})
+        if "/groups/g1/owners/microsoft.graph.user" in url:
+            return httpx.Response(200, json={"value": [{"id": "u9", "displayName": "Priya", "jobTitle": "EM"}]})
+        if url == f"{GRAPH}/$batch":
+            managers = {"u1": {"id": "u9", "displayName": "Priya"}, "u9": {"id": "u10", "displayName": "Avery",
+                                                                           "jobTitle": "VP"}}
+            reqs = json.loads(req.content)["requests"]
+            assert len(reqs) <= 20
+            out = []
+            for r in reqs:
+                uid = r["url"].split("/")[2]
+                m = managers.get(uid)
+                out.append({"id": r["id"], "status": 200, "body": m} if m else {"id": r["id"], "status": 404})
+            return httpx.Response(200, json={"responses": out})
         return httpx.Response(404)
     return h
 
@@ -61,9 +74,15 @@ def test_graph_sync_reads_mapped_groups_with_paging(svc):
     with svc.session() as s:
         run = sync_graph(s, svc.settings, cfg, actor="t", client=client)
         people = {p.id: p for p in s.scalars(select(DirectoryPerson))}
-    assert run.status == "ok" and run.counts == {"people": 2, "groups": 1, "groups_not_found": ["sg-missing"]}
+    assert run.status == "ok" and run.counts == {"people": 4, "groups": 1, "with_manager": 2,
+                                                 "groups_not_found": ["sg-missing"]}
     assert people["u1"].upn == "jd@example.com" and people["u1"].nickname == "jd"
     assert set(people["u2"].groups) >= {"sg-app-team", "g1"}
+    # group owner leads the team; the manager chain walks up past the cached groups
+    assert people["u9"].leads == ["sg-app-team"] and people["u9"].job_title == "EM"
+    assert (people["u1"].manager_id, people["u9"].manager_id, people["u2"].manager_id) == ("u9", "u10", "")
+    assert people["u10"].groups == [] and people["u10"].job_title == "VP"
+    assert sum("$batch" in c for c in calls) == 2  # level 1 (u1, u2, u9), level 2 (u10)
     assert sum("oauth2/v2.0/token" in c for c in calls) == 1  # token reused
 
 
@@ -286,7 +305,7 @@ def test_console_sync_button(sample_owned):
     page = c.get("/ui/ownership").text
     assert "Sync now and rebuild owners" in page
     r = c.post("/ui/connectors/graph/sync", data={"csrf": csrf(page)}, follow_redirects=True)
-    assert "graph snapshot sync: 4 people" in r.text and "Jordan Diaz" in r.text
+    assert "graph snapshot sync: 11 people" in r.text and "Jordan Diaz" in r.text
 
 
 def test_leanix_config_defaults():

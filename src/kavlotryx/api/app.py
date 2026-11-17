@@ -202,6 +202,17 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
     def summary(_: Principal = Depends(require(READ))):
         return svc.summary()
 
+    @app.get("/api/v1/people", tags=["ownership"])
+    def people_view(_: Principal = Depends(require(READ))):
+        """Leaders and engineers from the Microsoft Graph cache, with their open findings (FR-OW-09)."""
+        from kavlotryx.core import people
+
+        with svc.session() as s:
+            org = people.build(s, svc.ownership)
+        return {"total_open": org.total_open, "named": org.named_total, "reached": org.reached_total,
+                "reached_leader": org.led_total, "unreached": org.unreached,
+                "people": [{**org.rows[pid].as_dict(), "depth": org.rows[pid].depth} for pid in org.order]}
+
     @app.get("/api/v1/connectors", tags=["connectors"])
     def connectors(_: Principal = Depends(require(READ))):
         from kavlotryx.connectors import CONNECTORS, connector_mode, last_runs
