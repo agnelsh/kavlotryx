@@ -146,8 +146,10 @@ def test_admin_manages_users_and_changes_apply_at_once(app, idp, day1):
     sign_in(bob, idp, BOB)
     with day1.session() as s:
         ids = {u.email: u.id for u in s.scalars(select(User))}
-    page = alice.get("/ui/settings").text
-    assert "Users" in page and "another admin changes your user" in page and "migrations 0002" in page
+    page = alice.get("/ui/settings/users").text
+    assert "Users" in page and "another admin changes your user" in page
+    iam = alice.get("/ui/settings/iam").text
+    assert "kav-admins" in iam and CLIENT_SECRET not in iam  # the role map is shown, the secret never
 
     # nobody changes their own user
     r = alice.post(f"/ui/settings/users/{ids['alice@example.com']}",
@@ -157,7 +159,7 @@ def test_admin_manages_users_and_changes_apply_at_once(app, idp, day1):
     # a pinned role works at once and survives the next sign-in
     alice.post(f"/ui/settings/users/{ids['bob@example.com']}",
                data={"csrf": csrf(page), "action": "role", "role": "viewer"}, follow_redirects=True)
-    bp = bob.get("/ui/settings").text
+    bp = bob.get("/ui/settings/policy").text
     assert "Only admins can change the policy" in bp
     sign_in(bob, idp, BOB)
     with day1.session() as s:
@@ -184,7 +186,7 @@ def test_sign_out_everywhere(app, idp, day1):
     sign_in(bob, idp, BOB)
     with day1.session() as s:
         bid = s.scalar(select(User.id).where(User.email == "bob@example.com"))
-    page = alice.get("/ui/settings").text
+    page = alice.get("/ui/settings/users").text
     alice.post(f"/ui/settings/users/{bid}", data={"csrf": csrf(page), "action": "signout"})
     assert bob.get("/ui", follow_redirects=False).status_code == 303
 

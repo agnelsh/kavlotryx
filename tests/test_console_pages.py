@@ -105,7 +105,7 @@ def test_csv_export_neutralises_formulas(admin, day1):
 
 
 def test_settings_policy_edit_is_admin_only_and_audited(admin, viewer, day1):
-    page = admin.get("/ui/settings").text
+    page = admin.get("/ui/settings/policy").text
     form = {"csrf": csrf(page), "confidence_limit": "0.6", "due_critical": "3", "due_high": "14",
             "due_medium": "60", "due_low": "120", "dispatch_min_priority": "Medium", "production_tag_keys": "env",
             "production_values": "prod", "scan_stale_hours": "24"}
@@ -115,7 +115,7 @@ def test_settings_policy_edit_is_admin_only_and_audited(admin, viewer, day1):
     got = (p.confidence_limit, p.due_days["High"], p.dispatch_min_priority, p.scan_stale_hours)
     assert got == (0.6, 14, "Medium", 24)
 
-    vpage = viewer.get("/ui/settings").text
+    vpage = viewer.get("/ui/settings/policy").text
     assert "Only admins can change the policy" in vpage
     denied = viewer.post("/ui/settings/policy", data={**form, "csrf": csrf(vpage)}, follow_redirects=True)
     assert "viewer role cannot do this" in denied.text
@@ -130,9 +130,30 @@ def test_settings_policy_edit_is_admin_only_and_audited(admin, viewer, day1):
 def test_settings_never_shows_secrets(admin, day1):
     day1.settings.jira_token = "jira-secret-value-123"
     day1.settings.graph_client_secret = "graph-secret-value-456"
-    html = admin.get("/ui/settings").text
-    assert "jira-secret-value-123" not in html and "graph-secret-value-456" not in html
-    assert ADMIN not in html and "KAVLO_GRAPH_CLIENT_SECRET" in html
+    day1.settings.defectdojo_token = "dojo-secret-value-789"
+    for tab in ("iam", "users", "policy", "connectors", "configuration"):
+        html = admin.get(f"/ui/settings/{tab}").text
+        for secret in ("jira-secret-value-123", "graph-secret-value-456", "dojo-secret-value-789", ADMIN):
+            assert secret not in html, (tab, secret)
+    assert "KAVLO_GRAPH_CLIENT_SECRET" in admin.get("/ui/settings/connectors").text
+
+
+def test_settings_tabs(admin):
+    r = admin.get("/ui/settings", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/ui/settings/iam"
+    tabs = {"iam": ("Single sign-on (OIDC)", "API tokens"), "users": ("Users",),
+            "policy": ("Remediation policy",), "connectors": ("Ticket tracker", "DefectDojo", "Ownership connectors"),
+            "configuration": ("Database", "audit_events", "0002")}
+    for tab, words in tabs.items():
+        html = admin.get(f"/ui/settings/{tab}").text
+        nav = re.search(r'<nav class="tabs tabs-lg page-tabs" aria-label="Settings">(.*?)</nav>', html, re.S).group(1)
+        assert re.findall(r">([A-Za-z ]+)</a>", nav) == ["IAM", "User Management", "Policy", "Connectors",
+                                                         "Configuration"]
+        assert f'href="/ui/settings/{tab}" aria-current="page"' in html
+        for w in words:
+            assert w in html, (tab, w)
+    assert "Remediation policy" not in admin.get("/ui/settings/iam").text
+    assert admin.get("/ui/settings/nope").status_code == 404
 
 
 def test_old_urls_redirect(admin):

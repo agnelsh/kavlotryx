@@ -1,16 +1,95 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, yes, mode_badge %}
 {% from "_parts.html" import field with context %}
-{% block title %}Settings{% endblock %}
+{% block title %}Settings · {{ (tabs|selectattr(0, "equalto", tab)|first)[1] }}{% endblock %}
 {% block content %}
 <section class="head">
   <div>
-    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Settings · <span class="t-violet">policy, integrations, access</span></div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Settings · <span class="t-violet">{{ (tabs|selectattr(0, "equalto", tab)|first)[1] }}</span></div>
     <h1>Settings</h1>
-    <p class="lede">Admins can change the remediation policy here; every change is audited. Credentials stay in environment variables and are never shown.</p>
+    <p class="lede">Admins change the policy and manage users here; every change is audited. Credentials stay in environment variables and are never shown.</p>
   </div>
 </section>
 
+<nav class="tabs tabs-lg page-tabs" aria-label="Settings">
+  {% for key, label, ic in tabs %}<a class="{{ 'on' if tab == key }}" href="/ui/settings/{{ key }}" {% if tab == key %}aria-current="page"{% endif %}>{{ icon(ic) }}{{ label }}</a>{% endfor %}
+</nav>
+
+{# -- IAM ------------------------------------------------------------------- #}
+{% if tab == 'iam' %}
+<div class="split">
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("users") }}Single sign-on (OIDC)</h2>{% if sso.on %}<span class="tag-ok mono">on</span>{% else %}<span class="tag-dim mono">off</span>{% endif %}</div>
+    <dl class="kv mono small">
+      <dt>KAVLO_OIDC_ISSUER</dt><dd>{{ sso.issuer or '—' }}</dd>
+      <dt>KAVLO_OIDC_CLIENT_ID</dt><dd>{{ yes(sso.client) }}</dd>
+      <dt>KAVLO_OIDC_CLIENT_SECRET</dt><dd>{{ yes(sso.secret) }}</dd>
+      <dt>KAVLO_OIDC_REDIRECT_URL</dt><dd>{{ sso.redirect or '—' }}</dd>
+      <dt>KAVLO_OIDC_SCOPES</dt><dd>{{ sso.scopes }}</dd>
+      <dt>KAVLO_OIDC_GROUPS_CLAIM</dt><dd>{{ sso.groups_claim }}</dd>
+      <dt>KAVLO_OIDC_LABEL</dt><dd>{{ sso.label }}</dd>
+      <dt>KAVLO_SESSION_SECRET</dt><dd>{{ yes(sso.session_secret) }}{% if not sso.session_secret %} <span class="t-amber">sessions end at restart</span>{% endif %}</dd>
+      <dt>KAVLO_TOKEN_LOGIN</dt><dd>{{ 'token sign-in shown on the console' if sso.token_login else 'token sign-in hidden' }}</dd>
+    </dl>
+    <p class="muted small">Register Kavlotryx with your identity provider as a web app with the redirect URL above. Authorization-code flow with PKCE; the ID token is verified against the provider's published keys.</p>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("tree") }}Group to role mapping</h2><span class="muted mono small">KAVLO_OIDC_ROLE_MAP</span></div>
+    {% if sso.role_map %}
+    <table class="tbl"><thead><tr><th>Role</th><th>Groups</th><th>Can</th></tr></thead><tbody>
+      {% for role, can in [("admin", "everything, approve triage, manage users and policy"), ("analyst", "triage, overrides, notes, pipeline runs"), ("viewer", "read only")] %}
+      <tr><td><span class="tag-{{ 'violet' if role == 'admin' else 'ok' }} mono">{{ role }}</span></td>
+        <td class="mono small">{% for g in sso.role_map.get(role, []) %}{{ 'everyone' if g == '*' else g }}{{ ', ' if not loop.last }}{% else %}<span class="muted">—</span>{% endfor %}</td>
+        <td class="small muted">{{ can }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}<p class="empty-note">No mapping. Without one, nobody gets a role at sign-in; admins can still pin roles under User Management.</p>{% endif %}
+    <p class="muted small">The highest matching role wins. Someone who matches no group signs in to nothing.</p>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("verified") }}API tokens</h2>{% if auth_off %}<span class="tag-orange mono">auth off (local)</span>{% endif %}</div>
+  {% if tokens %}
+  <table class="tbl"><thead><tr><th>Token name</th><th>Role</th><th>Default dashboard</th></tr></thead><tbody>
+    {% for name, role, persona in tokens %}<tr><td class="mono">{{ name }}</td><td><span class="tag-dim mono">{{ role }}</span></td><td class="small">{{ (personas|selectattr(0, "equalto", persona)|map(attribute=1)|first) or '—' }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% elif auth_off %}<p class="empty-note">No tokens: the console runs with <code>--insecure-no-auth</code>.</p>
+  {% else %}<p class="empty-note">No API tokens. People sign in with single sign-on; the REST API is closed.</p>{% endif %}
+  <p class="muted small">Tokens come from <code>KAVLO_API_TOKENS</code> (name:role:token) and are kept only as SHA-256 hashes. Roles: admin, analyst, viewer, and ingest (upload only, for CI). Default dashboards come from <code>KAVLO_PERSONAS</code> (name=persona).</p>
+</section>
+{% endif %}
+
+{# -- User management ------------------------------------------------------- #}
+{% if tab == 'users' %}
+<section class="card" id="users">
+  <div class="card-head"><h2>{{ icon("users") }}Users <span class="pill mono">{{ users|length }}</span></h2>
+    <span class="mono small">{% if sso.on %}<span class="tag-ok">single sign-on on</span> {{ sso.issuer_host }}{% else %}<span class="tag-dim">single sign-on off</span>{% endif %}</span></div>
+  {% if users %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>User</th><th>Role</th><th>Groups</th><th>Last sign-in</th>{% if is_admin %}<th>Change</th>{% endif %}</tr></thead>
+    <tbody>{% for u in users %}{% set me = u.id == who.user_id %}
+    <tr class="{{ 'row-dim' if not u.active }}"><td><b>{{ u.name or u.email }}</b>{% if me %} <span class="tag-dim mono">you</span>{% endif %}<br><small class="muted mono">{{ u.email }}</small></td>
+      <td><span class="tag-{{ 'violet' if u.role == 'admin' else ('dim' if u.role == 'none' else 'ok') }} mono">{{ u.role }}</span><br><small class="muted mono">{{ 'pinned by an admin' if u.role_source == 'manual' else 'from groups' }}{{ ' · deactivated' if not u.active }}</small></td>
+      <td class="mono small" title="{{ u.groups|join(', ') }}">{{ u.groups|length }} group{{ 's' if u.groups|length != 1 }}</td>
+      <td class="mono small">{{ u.last_login_at|ago if u.last_login_at else 'never' }}</td>
+      {% if is_admin %}<td>{% if me %}<span class="muted small">another admin changes your user</span>{% else %}
+        <form class="user-form" method="post" action="/ui/settings/users/{{ u.id }}">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <select name="role" aria-label="Role for {{ u.email }}">{% for r in ["admin", "analyst", "viewer", "none"] %}<option {{ 'selected' if r == u.role }}>{{ r }}</option>{% endfor %}</select>
+          <button class="btn btn-outline" name="action" value="role">Pin role</button>
+          {% if u.role_source == 'manual' %}<button class="btn btn-ghost" name="action" value="groups">Use groups</button>{% endif %}
+          <button class="btn btn-ghost" name="action" value="{{ 'deactivate' if u.active else 'activate' }}">{{ 'Deactivate' if u.active else 'Activate' }}</button>
+          <button class="btn btn-ghost" name="action" value="signout">Sign out everywhere</button>
+        </form>{% endif %}</td>{% endif %}</tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}<p class="empty-note">{{ 'Nobody has signed in with single sign-on yet.' if sso.on else 'Single sign-on is off. Set it up under IAM to let people sign in with their organization account.' }}</p>{% endif %}
+  <p class="muted small">A user is created at first sign-in. The role comes from the identity provider's <code>{{ sso.groups_claim }}</code> claim through the mapping under IAM; a pinned role wins until an admin sets "Use groups" again. Role changes apply at once; deactivating ends every session.</p>
+</section>
+{% endif %}
+
+{# -- Policy ----------------------------------------------------------------- #}
+{% if tab == 'policy' %}
 <section class="card">
   <div class="card-head"><h2>{{ icon("gear") }}Remediation policy</h2>{% if overrides %}<span class="tag-amber mono">{{ overrides|length }} changed in the console</span>{% endif %}</div>
   <form class="form policy-form" method="post" action="/ui/settings/policy">
@@ -43,7 +122,10 @@
   <form method="post" action="/ui/settings/policy/reset"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">{{ icon("refresh") }}Reset console changes to policy.yaml</button></form>
   {% endif %}
 </section>
+{% endif %}
 
+{# -- Connectors -------------------------------------------------------------- #}
+{% if tab == 'connectors' %}
 <div class="split" id="connectors">
   <section class="card">
     <div class="card-head"><h2>{{ icon("ticket") }}Ticket tracker</h2><span class="tag-{{ 'ok' if trk.kind == 'jira' else 'amber' }} mono">{{ 'Jira Cloud' if trk.kind == 'jira' else 'fake tracker (demo)' }}</span></div>
@@ -55,69 +137,59 @@
     </dl>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("users") }}Ownership connectors</h2><a class="link" href="/ui/ownership#connectors">Ownership {{ icon("arrow") }}</a></div>
+    <div class="card-head"><h2>{{ icon("merge") }}DefectDojo</h2><span class="tag-{{ 'ok' if dojo.url and dojo.token else 'dim' }} mono">{{ 'configured' if dojo.url and dojo.token else 'off' }}</span></div>
+    <dl class="kv mono small">
+      <dt>KAVLO_DEFECTDOJO_URL</dt><dd>{{ dojo.url or '—' }}</dd>
+      <dt>KAVLO_DEFECTDOJO_TOKEN</dt><dd>{{ yes(dojo.token) }}</dd>
+      <dt>KAVLO_DEFECTDOJO_PRODUCTS</dt><dd>{{ dojo.products or 'every product' }}</dd>
+    </dl>
+    <p class="muted small">Read-only pull of findings, one scan scope per product: <code>kavlo pull defectdojo</code>. File exports work without this.</p>
+  </section>
+</div>
+<section class="card">
+  <div class="card-head"><h2>{{ icon("users") }}Ownership connectors</h2><a class="link" href="/ui/ownership#connectors">Ownership Mapping {{ icon("arrow") }}</a></div>
+  <div class="split">
     <dl class="kv mono small">
       <dt>Microsoft Graph</dt><dd>{{ mode_badge(graph.mode) }}</dd>
       <dt>KAVLO_GRAPH_TENANT_ID</dt><dd>{{ yes(graph.tenant) }}</dd>
       <dt>KAVLO_GRAPH_CLIENT_ID</dt><dd>{{ yes(graph.client) }}</dd>
       <dt>KAVLO_GRAPH_CLIENT_SECRET</dt><dd>{{ yes(graph.secret) }}</dd>
       {% if graph.snapshot %}<dt>KAVLO_GRAPH_SNAPSHOT</dt><dd>{{ graph.snapshot }}</dd>{% endif %}
+    </dl>
+    <dl class="kv mono small">
       <dt>LeanIX</dt><dd>{{ mode_badge(leanix.mode) }}</dd>
       <dt>KAVLO_LEANIX_HOST</dt><dd>{{ leanix.host or '—' }}</dd>
       <dt>KAVLO_LEANIX_TOKEN</dt><dd>{{ yes(leanix.token) }}</dd>
       {% if leanix.snapshot %}<dt>KAVLO_LEANIX_SNAPSHOT</dt><dd>{{ leanix.snapshot }}</dd>{% endif %}
       <dt>team relation</dt><dd>{{ leanix.relation }}</dd>
     </dl>
-    <p class="muted small">Graph needs an app registration with <code>GroupMember.Read.All</code> (application). LeanIX needs a technical-user API token with read access.</p>
-  </section>
-</div>
+  </div>
+  <p class="muted small">Graph needs an app registration with <code>GroupMember.Read.All</code> (application), and <code>User.Read.All</code> for the manager chain. LeanIX needs a technical-user API token with read access.</p>
+</section>
+{% endif %}
 
+{# -- Configuration ------------------------------------------------------------ #}
+{% if tab == 'configuration' %}
 <div class="split">
-  <section class="card">
-    <div class="card-head"><h2>{{ icon("verified") }}Access</h2>{% if auth_off %}<span class="tag-orange mono">auth off (local)</span>{% endif %}</div>
-    {% if tokens %}
-    <table class="tbl"><thead><tr><th>Token name</th><th>Role</th><th>Default dashboard</th></tr></thead><tbody>
-      {% for name, role, persona in tokens %}<tr><td class="mono">{{ name }}</td><td><span class="tag-dim mono">{{ role }}</span></td><td class="small">{{ (personas|selectattr(0, "equalto", persona)|map(attribute=1)|first) or '—' }}</td></tr>{% endfor %}
-    </tbody></table>
-    {% else %}<p class="empty-note">No tokens: the console runs with <code>--insecure-no-auth</code>.</p>{% endif %}
-    <p class="muted small">Tokens come from <code>KAVLO_API_TOKENS</code> (name:role:token). Default dashboards come from <code>KAVLO_PERSONAS</code> (name=persona); people can switch on the dashboard.</p>
-  </section>
   <section class="card">
     <div class="card-head"><h2>{{ icon("layers") }}Configuration</h2></div>
     <dl class="kv mono small">
       <dt>config directory</dt><dd>{{ config_dir }}</dd>
       {% for n, ok in files.items() %}<dt>{{ n }}</dt><dd>{{ yes(ok) if ok else 'missing (defaults)' }}</dd>{% endfor %}
       <dt>owners</dt><dd>{{ owners }}</dd>
-      <dt>database</dt><dd>{{ dialect }}</dd>
       <dt>version</dt><dd>kavlotryx {{ version }} · OCSF {{ ocsf_version }}</dd>
     </dl>
   </section>
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("fingerprint") }}Database</h2><span class="tag-{{ 'ok' if schema.current == schema.head else 'amber' }} mono">{{ 'schema current' if schema.current == schema.head else 'schema behind' }}</span></div>
+    <dl class="kv mono small">
+      <dt>database</dt><dd>{{ dialect }}</dd>
+      <dt>schema revision</dt><dd>{{ schema.current or 'none' }} (code needs {{ schema.head }})</dd>
+      <dt>migrate at start</dt><dd>{{ 'yes' if schema.auto else 'no: run kavlo db upgrade' }}</dd>
+      {% for rev, doc in schema.history %}<dt>{{ rev }}</dt><dd>{{ doc }}</dd>{% endfor %}
+    </dl>
+  </section>
 </div>
-
-<section class="card" id="users">
-  <div class="card-head"><h2>{{ icon("users") }}Users <span class="pill mono">{{ users|length }}</span></h2>
-    <span class="mono small">{% if sso.on %}<span class="tag-ok">single sign-on on</span> {{ sso.issuer_host }}{% else %}<span class="tag-dim">single sign-on off</span>{% endif %} · migrations {{ schema_rev }}</span></div>
-  {% if users %}
-  <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>User</th><th>Role</th><th>Groups</th><th>Last sign-in</th>{% if is_admin %}<th>Change</th>{% endif %}</tr></thead>
-    <tbody>{% for u in users %}{% set me = u.id == who.user_id %}
-    <tr class="{{ 'row-dim' if not u.active }}"><td><b>{{ u.name or u.email }}</b>{% if me %} <span class="tag-dim mono">you</span>{% endif %}<br><small class="muted mono">{{ u.email }}</small></td>
-      <td><span class="tag-{{ 'violet' if u.role == 'admin' else ('dim' if u.role == 'none' else 'ok') }} mono">{{ u.role }}</span><br><small class="muted mono">{{ 'pinned by an admin' if u.role_source == 'manual' else 'from groups' }}{{ ' · deactivated' if not u.active }}</small></td>
-      <td class="mono small">{{ u.groups|length }} group{{ 's' if u.groups|length != 1 }}</td>
-      <td class="mono small">{{ u.last_login_at|ago if u.last_login_at else 'never' }}</td>
-      {% if is_admin %}<td>{% if me %}<span class="muted small">another admin changes your user</span>{% else %}
-        <form class="user-form" method="post" action="/ui/settings/users/{{ u.id }}">
-          <input type="hidden" name="csrf" value="{{ csrf }}">
-          <select name="role" aria-label="Role for {{ u.email }}">{% for r in ["admin", "analyst", "viewer", "none"] %}<option {{ 'selected' if r == u.role }}>{{ r }}</option>{% endfor %}</select>
-          <button class="btn btn-outline" name="action" value="role">Pin role</button>
-          {% if u.role_source == 'manual' %}<button class="btn btn-ghost" name="action" value="groups">Use groups</button>{% endif %}
-          <button class="btn btn-ghost" name="action" value="{{ 'deactivate' if u.active else 'activate' }}">{{ 'Deactivate' if u.active else 'Activate' }}</button>
-          <button class="btn btn-ghost" name="action" value="signout">Sign out everywhere</button>
-        </form>{% endif %}</td>{% endif %}</tr>
-    {% endfor %}</tbody></table></div>
-  {% else %}<p class="empty-note">{{ 'Nobody has signed in with single sign-on yet.' if sso.on else 'Set KAVLO_OIDC_ISSUER, KAVLO_OIDC_CLIENT_ID, KAVLO_OIDC_CLIENT_SECRET and KAVLO_OIDC_REDIRECT_URL to let people sign in with their organization account.' }}</p>{% endif %}
-  <p class="muted small">A user is created at first sign-in. The role comes from the identity provider's <code>{{ sso.groups_claim }}</code> claim through <code>KAVLO_OIDC_ROLE_MAP</code>; a pinned role wins until an admin sets "Use groups" again. Role changes apply at once; deactivating ends every session.</p>
-</section>
 
 <section class="card term-card">
   <div class="card-head"><span class="mono small"><i class="dot dot-crit"></i><i class="dot dot-amber"></i><i class="dot dot-ok"></i> audit_events</span><span class="t-ok mono small">append-only · latest {{ events|length }}</span></div>
@@ -127,4 +199,5 @@
     {% else %}<div class="muted">no events yet</div>{% endfor %}
   </div>
 </section>
+{% endif %}
 {% endblock %}

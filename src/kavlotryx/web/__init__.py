@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import re
 import secrets
 from datetime import date
@@ -559,21 +560,45 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
 
     # -- 5. settings ------------------------------------------------------------------
 
+    SETTINGS_TABS = [("iam", "IAM", "verified"), ("users", "User Management", "users"),
+                     ("policy", "Policy", "gear"), ("connectors", "Connectors", "merge"),
+                     ("configuration", "Configuration", "layers")]
+
     @app.get("/ui/settings", include_in_schema=False)
-    def settings_view(request: Request):
-        who = session.current(request)
+    def settings_home(request: Request):
+        session.current(request)
+        return RedirectResponse("/ui/settings/iam", status_code=303)
+
+    @app.get("/ui/settings/{tab}", include_in_schema=False)
+    def settings_view(request: Request, tab: str):
         from sqlalchemy import select
 
         from kavlotryx import migrate
         from kavlotryx.db import User
 
+        who = session.current(request)
+        if tab not in {k for k, _, _ in SETTINGS_TABS}:
+            return render(request, "notfound.html", {"what": f"settings tab {tab[:40]}"}, who, status=404)
         with svc.session() as s:
             data = pages.settings_page(s, settings, svc.policy, svc.ownership, request.app.state.tokens)
             data["users"] = list(s.scalars(select(User).order_by(User.active.desc(), User.email)))
-        data["sso"] = {"on": sso_on, "issuer_host": urlsplit(settings.oidc_issuer).netloc,
-                       "groups_claim": settings.oidc_groups_claim}
-        data["schema_rev"] = migrate.current(svc.engine) or "none"
-        return render(request, "settings.html", data, who)
+        try:
+            role_map = sso.parse_role_map(settings.oidc_role_map)
+        except ValueError:
+            role_map = {}
+        data["sso"] = {"on": sso_on, "issuer": settings.oidc_issuer,
+                       "issuer_host": urlsplit(settings.oidc_issuer).netloc,
+                       "client": bool(settings.oidc_client_id), "secret": bool(settings.oidc_client_secret),
+                       "redirect": settings.oidc_redirect_url, "scopes": settings.oidc_scopes,
+                       "groups_claim": settings.oidc_groups_claim, "label": settings.oidc_label,
+                       "role_map": role_map, "token_login": token_login,
+                       "session_secret": bool(os.environ.get("KAVLO_SESSION_SECRET"))}
+        data["dojo"] = {"url": settings.defectdojo_url, "token": bool(settings.defectdojo_token),
+                        "products": settings.defectdojo_products}
+        data["schema"] = {"current": migrate.current(svc.engine), "head": migrate.head(),
+                          "auto": settings.auto_migrate, "history": migrate.history()}
+        return render(request, "settings.html", {**data, "tab": tab, "tabs": SETTINGS_TABS,
+                                                 "path": "/ui/settings"}, who)
 
     @app.post("/ui/settings/users/{uid}", include_in_schema=False)
     def settings_user(request: Request, uid: int, action: str = Form(...), role: str = Form(""),
@@ -598,8 +623,8 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                 else:
                     raise users.UserError("unknown action")
             except users.UserError as e:
-                return session.redirect("/ui/settings#users", "error", f"Not changed: {e}")
-        return session.redirect("/ui/settings#users", "ok", msg)
+                return session.redirect("/ui/settings/users", "error", f"Not changed: {e}")
+        return session.redirect("/ui/settings/users", "ok", msg)
 
     @app.post("/ui/settings/policy", include_in_schema=False)
     def settings_policy(request: Request, csrf: str = Form(""), confidence_limit: float = Form(...),
@@ -624,17 +649,17 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                                               "Medium": acc_medium or 1, "Low": acc_low or 1}
             updates["triage_four_eyes"] = triage_four_eyes == "on"
         if dispatch_min_priority not in ("Low", "Medium", "High", "Critical"):
-            return session.redirect("/ui/settings", "error", "Unknown priority.")
+            return session.redirect("/ui/settings/policy", "error", "Unknown priority.")
         current = svc.policy.model_dump()
         changed = {k: v for k, v in updates.items() if current.get(k) != v}
         if not changed:
-            return session.redirect("/ui/settings", "ok", "Nothing changed.")
+            return session.redirect("/ui/settings/policy", "ok", "Nothing changed.")
         try:
             svc.set_policy(changed, f"ui:{who.name}")
         except ValueError as e:
-            return session.redirect("/ui/settings", "error", f"Not saved: {e}")
+            return session.redirect("/ui/settings/policy", "error", f"Not saved: {e}")
         r = svc.rebuild()
-        return session.redirect("/ui/settings", "ok", f"Saved {', '.join(sorted(changed))}. "
+        return session.redirect("/ui/settings/policy", "ok", f"Saved {', '.join(sorted(changed))}. "
                                                       f"Rebuilt {r.work_items} work items.")
 
     @app.post("/ui/settings/policy/reset", include_in_schema=False)
@@ -642,7 +667,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
         who = writer(request, csrf, ADMIN)
         svc.reset_policy(f"ui:{who.name}")
         svc.rebuild()
-        return session.redirect("/ui/settings", "ok", "Policy reset to policy.yaml and defaults.")
+        return session.redirect("/ui/settings/policy", "ok", "Policy reset to policy.yaml and defaults.")
 
     # -- pipeline actions (from any page) ----------------------------------------
 

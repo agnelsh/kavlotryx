@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, mode_badge %}
 {% from "_parts.html" import run_line, sync_button, owner_tabs with context %}
-{% block title %}Ownership{% endblock %}
+{% block title %}Ownership Mapping{% endblock %}
 {% block content %}
 <section class="head">
   <div>
     <div class="eyebrow"><i class="dot dot-amber pulse"></i>Ownership · <span class="t-violet">owner with evidence</span></div>
-    <h1>Who fixes what, and why</h1>
+    <h1>Ownership Mapping</h1>
     <p class="lede">Ordered rules give every finding an owner, a confidence and the evidence. Microsoft Graph and LeanIX add identity and application context so findings reach the right team.</p>
   </div>
   {% if can_write %}

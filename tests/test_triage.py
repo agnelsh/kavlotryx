@@ -279,7 +279,7 @@ def test_api_triage(clients):
 
 def test_settings_edit_triage_policy(clients):
     k, c = clients
-    page = c["me"].get("/ui/settings").text
+    page = c["me"].get("/ui/settings/policy").text
     assert 'name="acc_critical"' in page and 'name="triage_four_eyes"' in page
     form = {"csrf": csrf(page), "confidence_limit": "0.7", "due_critical": "7", "due_high": "30",
             "due_medium": "90", "due_low": "180", "dispatch_min_priority": "Low", "production_tag_keys": "env",

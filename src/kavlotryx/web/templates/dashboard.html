@@ -41,7 +41,7 @@
       <b>{% if c.run %}{{ 'synced' if c.run.status == 'ok' else 'failed' }} {{ c.age_h|hours }} ago{% else %}never synced{% endif %}</b>
       {{ mode_badge(c.mode) }}</a>
     {% endfor %}
-    <a class="health-item" href="/ui/settings"><span class="muted caps small mono">Tracker</span><b>{{ tracker }}</b><span class="tag-ok mono">idempotent</span></a>
+    <a class="health-item" href="/ui/settings/connectors"><span class="muted caps small mono">Tracker</span><b>{{ tracker }}</b><span class="tag-ok mono">idempotent</span></a>
     <a class="health-item" href="/ui/vulnerabilities?conf=review"><span class="muted caps small mono">Owner review</span>
       <b>{{ pipe.review }} findings</b>{% if pipe.review %}<span class="tag-amber mono">needs a person</span>{% else %}<span class="tag-ok mono">clear</span>{% endif %}</a>
   </div>

@@ -68,7 +68,7 @@
 {% macro sync_button(name, mode) %}
 {% if is_admin and mode != 'off' %}
 <form method="post" action="/ui/connectors/{{ name }}/sync"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-outline btn-block">{{ icon("sync") }}Sync now and rebuild owners</button></form>
-{% elif mode == 'off' %}<p class="muted small">Not configured. See <a class="link" href="/ui/settings#connectors">Settings</a>.</p>{% endif %}
+{% elif mode == 'off' %}<p class="muted small">Not configured. See <a class="link" href="/ui/settings/connectors">Settings</a>.</p>{% endif %}
 {% endmacro %}
 
 {% macro field(label, name, type, value, help, attrs="") %}
