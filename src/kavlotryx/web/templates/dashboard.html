@@ -6,8 +6,9 @@
 {% set plabel = (personas|selectattr(0, "equalto", persona)|first) %}
 <section class="head">
   <div>
-    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Dashboard · <span class="t-violet">{{ plabel[1] }}</span></div>
-    <h1>{{ plabel[2] }}</h1>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i><span class="t-violet">{{ plabel[1] }}</span></div>
+    <h1>Dashboard</h1>
+    <p class="lede">{{ plabel[2] }}.</p>
   </div>
   {% if can_write %}
   <div class="head-actions">

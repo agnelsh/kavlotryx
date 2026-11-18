@@ -27,7 +27,7 @@
     </fieldset>
   </div>
   <div class="filters-grid">
-    {{ sel("Status", "status", flt.status, [("open", "Open"), ("fixed", "Fixed"), ("", "Any")]) }}
+    {{ sel("Status", "status", flt.status, [("open", "Open"), ("fixed", "Fixed"), ("accepted", "Risk accepted"), ("false_positive", "False positive"), ("", "Any")]) }}
     {{ sel("Kind", "kind", flt.kind, [("", "All"), ("vuln", "Vulnerability"), ("config", "Misconfiguration")]) }}
     <label class="sel"><span>Scanner</span><select name="scanner"><option value="">All</option>{% for a in adapters %}<option value="{{ a }}" {{ 'selected' if flt.scanner == a }}>{{ a }}</option>{% endfor %}</select></label>
     <label class="sel"><span>Owner</span><select name="owner"><option value="">All</option>{% for o in owners + ['unassigned'] %}<option value="{{ o }}" {{ 'selected' if flt.owner == o }}>@{{ o }}</option>{% endfor %}</select></label>
@@ -71,7 +71,7 @@
       <tbody>
       {% for f in rows %}
       {% set wi = items.get(f.work_item_key) %}
-      <tr class="{{ 'row-dim' if f.status == 'fixed' }}">
+      <tr class="{{ 'row-dim' if f.status != 'open' }}">
         <td>{{ sev_badge(f.severity_id) }}</td>
         <td class="cell-main">{% if f.kind == 'vuln' %}<a class="mono strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.vuln_id }}</a><br><small class="muted">{{ f.title|short(64) }}</small>
           {% else %}<a class="strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.title|short(72) }}</a><br><small class="mono muted">{{ f.rule_key|short(34) }}</small>{% endif %}</td>

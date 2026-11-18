@@ -10,6 +10,7 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 
 from kavlotryx.adapters.base import Adapter, AdapterError, ParseResult
+from kavlotryx.adapters.defectdojo import DefectDojoAdapter
 from kavlotryx.adapters.ocsf import OcsfAdapter
 from kavlotryx.adapters.prowler import ProwlerAdapter
 from kavlotryx.adapters.trivy import TrivyAdapter
@@ -20,6 +21,7 @@ _BUILTIN: dict[str, type[Adapter]] = {
     "trivy": TrivyAdapter,
     "ocsf": OcsfAdapter,
     "wiz": WizAdapter,
+    "defectdojo": DefectDojoAdapter,
 }
 
 

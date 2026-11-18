@@ -25,6 +25,11 @@ hack/demo-samples.sh --serve 8080  # same, then open the console at /ui
 | 2 | wizcli `wizcli_img_zero_vul.json`: the same image, rebuilt | all 8 image findings fixed; their tickets close |
 | 3 | Prowler `no_vuln.ocsf.json` (empty) | the last IAM ticket closes |
 
+The demo also ingests a made-up DefectDojo export (`examples/scans/defectdojo-payments-checkout*.json`, written
+for Kavlotryx, not from DefectDojo's test suite). Analyst `cli:riley` proposes three triage decisions and a second
+person approves two of them; the third waits in the Triage queue. On day 2 DefectDojo has mitigated the two urllib3
+findings, so their ticket closes.
+
 `config/` holds the ownership rules for this data. The sample image has no source label, so
 `image_repos` maps it to a made-up repository with the CODEOWNERS file in `config/codeowners/`.
 
@@ -35,6 +40,6 @@ hack/demo-samples.sh --serve 8080  # same, then open the console at /ui
 - **Secrets are not ingested yet.** Trivy and wizcli secrets are counted as skipped (secret findings
   are planned for v0.2).
 - **Wiz IGNORED issues stay open.** Only RESOLVED issues count as fixed. An IGNORED issue still
-  exists, so it is not closed until risk-acceptance exceptions arrive (v0.3).
+  exists, so it stays open until someone records a false positive or a risk acceptance in Kavlotryx.
 - **wizcli IaC scans need `--scope`.** wizcli names them "IAC scan <time>", which is not an identity.
 - **Trivy Kubernetes reports** (`trivy k8s`) use a different format and are not supported.

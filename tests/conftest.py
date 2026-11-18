@@ -42,8 +42,10 @@ def tracker() -> FakeTracker:
 
 
 @pytest.fixture
-def svc(settings: Settings, tracker: FakeTracker) -> Kavlotryx:
-    return Kavlotryx(settings, tracker=tracker)
+def svc(settings: Settings, tracker: FakeTracker):
+    k = Kavlotryx(settings, tracker=tracker)
+    yield k
+    k.engine.dispose()  # PostgreSQL has a connection limit
 
 
 @pytest.fixture

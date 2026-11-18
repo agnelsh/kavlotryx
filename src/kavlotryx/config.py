@@ -117,11 +117,18 @@ class PolicyConfig(BaseModel):
     production_tag_keys: list[str] = Field(default_factory=lambda: ["env", "environment"])
     production_values: list[str] = Field(default_factory=lambda: ["prod", "production"])
     scan_stale_hours: int = 48  # a scope with no scan for longer is shown as stale
+    # Triage (FR-IF-06/07). A risk acceptance must expire within these days, by the
+    # highest severity it covers. Four eyes: the approver must not be the requester.
+    acceptance_max_days: dict[str, int] = Field(
+        default_factory=lambda: {"Critical": 30, "High": 90, "Medium": 180, "Low": 365}
+    )
+    triage_four_eyes: bool = True
 
 
 # Policy keys that admins may change in the console (Settings page).
 EDITABLE_POLICY_KEYS = ("confidence_limit", "due_days", "dispatch_min_priority", "dispatch_without_fix",
-                        "production_tag_keys", "production_values", "scan_stale_hours")
+                        "production_tag_keys", "production_values", "scan_stale_hours",
+                        "acceptance_max_days", "triage_four_eyes")
 
 
 # --- process settings --------------------------------------------------------
@@ -147,6 +154,9 @@ class Settings:
     leanix_host: str = ""  # e.g. acme.leanix.net
     leanix_token: str = field(default="", repr=False)
     leanix_snapshot: str = ""
+    defectdojo_url: str = ""  # e.g. https://defectdojo.example.com
+    defectdojo_token: str = field(default="", repr=False)
+    defectdojo_products: str = ""  # comma-separated product names; empty = every product
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -170,6 +180,9 @@ class Settings:
             leanix_host=e("KAVLO_LEANIX_HOST", ""),
             leanix_token=e("KAVLO_LEANIX_TOKEN", ""),
             leanix_snapshot=e("KAVLO_LEANIX_SNAPSHOT", ""),
+            defectdojo_url=e("KAVLO_DEFECTDOJO_URL", ""),
+            defectdojo_token=e("KAVLO_DEFECTDOJO_TOKEN", ""),
+            defectdojo_products=e("KAVLO_DEFECTDOJO_PRODUCTS", ""),
         )
 
     def default_personas(self) -> dict[str, str]:

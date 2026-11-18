@@ -40,6 +40,7 @@ STATES = [
     ("pending_verification", "Pending verify", "ticket done, scan not clean"),
     ("verified", "Verified", "closed by a clean scan"),
     ("reopened", "Reopened", "finding came back"),
+    ("triaged", "Closed by triage", "risk accepted or false positive"),
 ]
 
 
@@ -117,11 +118,11 @@ def workitems_page(s: Session, owner: str, state: str) -> dict[str, Any]:
         if status == "open":
             open_counts[key] += 1
     state_counts = Counter(w.state for w in all_items)
-    owner_counts = Counter(w.owner_slug for w in all_items if w.state not in ("verified", "superseded"))
+    owner_counts = Counter(w.owner_slug for w in all_items if w.state not in ("verified", "superseded", "triaged"))
     rows = [w for w in all_items if (not owner or w.owner_slug == owner) and (not state or w.state == state)]
     prio_rank = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Informational": 4}
     state_rank = {"reopened": 0, "pending_verification": 1, "dispatched": 2, "open": 3, "verified": 4,
-                  "superseded": 5}
+                  "triaged": 5, "superseded": 6}
     rows.sort(key=lambda w: (state_rank.get(w.state, 9), prio_rank.get(w.priority, 9), w.key))
     observations = s.scalar(select(func.count(Observation.id))) or 0
     ticketed = sum(1 for w in all_items if w.ticket_key)
@@ -160,7 +161,9 @@ def workitem_detail(s: Session, key: str) -> dict[str, Any] | None:
                  "dispatch.update": "Ticket updated", "verify.verified": "Fix verified by scan",
                  "verify.pending": "Held: ticket Done, scan not clean",
                  "verify.reopened": "Reopened: finding returned", "verify.resumed": "Ticket reopened in tracker",
-                 "verify.superseded": "Superseded"}.get(e.action, e.action)
+                 "verify.superseded": "Superseded",
+                 "verify.triaged": "Closed by triage: nothing open, the rest accepted or false positive"
+                 }.get(e.action, e.action)
         tone = ("ok" if e.action in ("verify.verified", "dispatch.create", "dispatch.adopt")
                 else "crit" if e.action == "verify.reopened" else "warn" if e.action == "verify.pending" else "")
         ticket = f" · ticket {detail.get('ticket')}" if detail.get("ticket") else ""
@@ -168,8 +171,8 @@ def workitem_detail(s: Session, key: str) -> dict[str, Any] | None:
     assets: dict[str, dict[str, Any]] = {}
     for m in members:
         a = assets.setdefault(m.asset_key, {"key": m.asset_key, "name": m.asset_name, "type": m.asset_type,
-                                            "open": 0, "fixed": 0})
-        a["open" if m.status == "open" else "fixed"] += 1
+                                            "open": 0, "fixed": 0, "triaged": 0})
+        a["open" if m.status == "open" else "fixed" if m.status == "fixed" else "triaged"] += 1
     return {
         "w": w, "members": members, "lead": lead, "observations": observations,
         "open": sum(1 for m in members if m.status == "open"),

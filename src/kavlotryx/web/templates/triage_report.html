@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_parts.html" import vuln_tabs with context %}
+{% block title %}Triage audit report{% endblock %}
+{% block content %}
+{% set qs = 'from=' ~ start ~ '&to=' ~ end ~ ('&owner=' ~ owner if owner else '') %}
+<section class="head no-print">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Vulnerabilities · <span class="t-violet">Audit report</span></div>
+    <h1>Triage audit report</h1>
+    <p class="lede">The risk-acceptance and false-positive register for a period, with control checks, the decision log and notes. The JSON download carries the same content and a SHA-256 digest an auditor can recompute.</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-outline" href="/ui/triage/report.json?{{ qs }}">{{ icon("download") }}JSON</a>
+    <a class="btn btn-outline" href="/ui/triage/report.csv?{{ qs }}">{{ icon("download") }}CSV register</a>
+    <button class="btn btn-primary" type="button" data-print>{{ icon("copy") }}Print or save as PDF</button>
+  </div>
+</section>
+
+<div class="no-print">{{ vuln_tabs("report") }}</div>
+
+<form class="card report-filters no-print" method="get" action="/ui/triage/report">
+  <label class="field"><span>From</span><input type="date" name="from" value="{{ start }}"></label>
+  <label class="field"><span>To</span><input type="date" name="to" value="{{ end }}"></label>
+  <label class="field"><span>Owner</span><select name="owner"><option value="">every owner</option>{% for o in owners %}<option value="{{ o }}" {{ 'selected' if o == owner }}>@{{ o }}</option>{% endfor %}</select></label>
+  <button class="btn btn-outline">{{ icon("refresh") }}Update</button>
+</form>
+
+<article class="report">
+  <header class="report-head">
+    <div><span class="muted mono caps small">Kavlotryx · triage register</span>
+      <h2>{{ rep.period.from }} to {{ rep.period.to }}{% if owner %} · @{{ owner }}{% endif %}</h2></div>
+    <dl class="kv mono small">
+      <dt>generated</dt><dd>{{ rep.generated_at }} by {{ rep.generated_by }}</dd>
+      <dt>version</dt><dd>kavlotryx {{ rep.kavlotryx_version }}</dd>
+      <dt>policy</dt><dd>four eyes {{ 'on' if rep.policy.four_eyes else 'off' }} · max days {% for k, v in rep.policy.acceptance_max_days|dictsort %}{{ k }} {{ v }}{{ ', ' if not loop.last }}{% endfor %}</dd>
+      <dt>digest</dt><dd class="t-violet-soft break">{{ rep.digest }}</dd>
+    </dl>
+  </header>
+
+  <section class="kpis">
+    <div class="kpi"><span class="kpi-label">Decisions</span><b class="kpi-value">{{ rep.summary.decisions }}</b><span class="kpi-note">{% for k, v in rep.summary.decisions_by_state|dictsort %}{{ v }} {{ k }}{{ ' · ' if not loop.last }}{% else %}none in period{% endfor %}</span></div>
+    <div class="kpi"><span class="kpi-label">Findings accepted</span><b class="kpi-value t-violet">{{ rep.summary.findings_accepted }}</b><span class="kpi-note">now, all owners</span></div>
+    <div class="kpi"><span class="kpi-label">False positives</span><b class="kpi-value">{{ rep.summary.findings_false_positive }}</b><span class="kpi-note">now, all owners</span></div>
+    <div class="kpi"><span class="kpi-label">Open findings</span><b class="kpi-value">{{ rep.summary.findings_open }}</b><span class="kpi-note">{{ rep.summary.findings_fixed }} fixed by scans</span></div>
+    <div class="kpi {{ 'kpi-warn' if rep.summary.checks_failed or rep.summary.checks_warned }}"><span class="kpi-label">Control checks</span><b class="kpi-value {{ 't-crit' if rep.summary.checks_failed else ('t-amber' if rep.summary.checks_warned else 't-ok') }}">{{ rep.controls|length - rep.summary.checks_failed - rep.summary.checks_warned }}/{{ rep.controls|length }}</b><span class="kpi-note">{{ rep.summary.checks_failed }} failed · {{ rep.summary.checks_warned }} warnings</span></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h3>{{ icon("verified") }}Control checks</h3></div>
+    <table class="tbl"><thead><tr><th>Check</th><th>Result</th><th>Detail</th><th>Decisions or findings</th></tr></thead><tbody>
+    {% for c in rep.controls %}
+    <tr><td class="strong">{{ c.name }}</td><td><span class="tag-{{ {'pass': 'ok', 'warn': 'amber', 'fail': 'crit'}[c.status] }} mono">{{ c.status|upper }}</span></td>
+      <td class="small">{{ c.detail }}</td><td class="mono small">{% for i in c['items'] %}{{ i }}{{ ', ' if not loop.last }}{% else %}—{% endfor %}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </section>
+
+  {% for title, rows in [("Risk acceptance register", rep.risk_acceptances), ("False positive register", rep.false_positives)] %}
+  {% set is_ra = loop.first %}
+  <section class="card">
+    <div class="card-head"><h3>{{ icon("flag") }}{{ title }} <span class="pill mono">{{ rows|length }}</span></h3></div>
+    {% if rows %}
+    <div class="tbl-wrap"><table class="tbl tbl-dense">
+      <thead><tr><th>#</th><th>State</th><th>Owner</th><th>Findings</th><th>Reason{{ ' and controls' if is_ra }}</th><th>Requested</th><th>Decided</th>{% if is_ra %}<th>Expires</th>{% endif %}<th>Ended</th></tr></thead>
+      <tbody>{% for x in rows %}
+      <tr><td class="mono"><a class="t-amber strong" href="/ui/triage/{{ x.id }}">#{{ x.id }}</a></td><td class="mono small">{{ x.state }}</td><td class="small">@{{ x.owner }}</td>
+        <td class="mono small">{{ x.finding_count }}<br><span class="muted">{% for k, v in x.by_severity|dictsort %}{{ v }} {{ k }}{{ ', ' if not loop.last }}{% endfor %}</span></td>
+        <td class="small prewrap">{{ x.reason }}{% if x.controls %}<br><span class="muted">Controls: {{ x.controls }}</span>{% endif %}{% if x.reference %}<br><span class="muted mono">Ref {{ x.reference }}</span>{% endif %}</td>
+        <td class="mono small">{{ x.requested_by }}<br><span class="muted">{{ x.requested_at }}</span></td>
+        <td class="mono small">{% if x.decided_by %}{{ x.decided_by }}<br><span class="muted">{{ x.decided_at }}</span>{% if not x.four_eyes and x.state != 'rejected' %}<br><span class="t-amber">self-approved</span>{% endif %}{% else %}—{% endif %}</td>
+        {% if is_ra %}<td class="mono small">{{ x.expires_on or '—' }}</td>{% endif %}
+        <td class="mono small">{% if x.ended_by %}{{ x.ended_by }}<br><span class="muted">{{ x.ended_at }}</span>{% else %}—{% endif %}</td></tr>
+      {% endfor %}</tbody></table></div>
+    {% else %}<p class="muted small">None in this period.</p>{% endif %}
+  </section>
+  {% endfor %}
+
+  <section class="card">
+    <div class="card-head"><h3>{{ icon("clock") }}Decision log <span class="pill mono">{{ rep.events|length }}</span></h3><span class="muted small">from the append-only audit table</span></div>
+    {% if rep.events %}
+    <div class="tbl-wrap"><table class="tbl tbl-dense"><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead><tbody>
+    {% for e in rep.events %}<tr><td class="mono small">{{ e.at }}</td><td class="mono small">{{ e.actor }}</td><td class="mono small">{{ e.action }}</td><td class="mono small">{{ e.target }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% else %}<p class="muted small">No triage events in this period.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h3>{{ icon("terminal") }}Notes <span class="pill mono">{{ rep.notes|length }}</span></h3></div>
+    {% if rep.notes %}
+    <ol class="notes">{% for n in rep.notes %}<li><div class="note-head mono small"><b>{{ n.author }}</b><span class="muted">{{ n.at }} · {{ n.target }}</span></div><p class="prewrap small">{{ n.body }}</p></li>{% endfor %}</ol>
+    {% else %}<p class="muted small">No notes in this period.</p>{% endif %}
+  </section>
+  <p class="muted small mono">To check this report: download the JSON, remove the "digest" field, serialize the rest with sorted keys and no spaces (UTF-8), and compare its SHA-256 with the digest above.</p>
+</article>
+{% endblock %}

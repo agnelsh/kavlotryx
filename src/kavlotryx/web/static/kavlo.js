@@ -34,6 +34,10 @@
       el.style.width = (w > 0 && w < 2 ? 2 : w) + "%";
     });
 
+    document.querySelectorAll("[data-print]").forEach(function (b) {
+      b.addEventListener("click", function () { window.print(); });
+    });
+
     document.querySelectorAll("[data-copy], [data-copy-text]").forEach(function (b) {
       b.addEventListener("click", function () {
         var text = b.getAttribute("data-copy-text");

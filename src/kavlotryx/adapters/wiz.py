@@ -9,8 +9,9 @@ One adapter reads four Wiz formats and detects which one it got:
 
 Status rule: only RESOLVED rows are left out. IGNORED and REJECTED issues
 are kept as present findings, because the weakness still exists; dropping
-them would let a later export "prove" a fix that never happened. Kavlotryx
-gets risk-acceptance exceptions in v0.3.
+them would let a later export "prove" a fix that never happened. Record the
+decision in Kavlotryx instead, as a false positive or a risk acceptance
+(``kavlotryx.core.triage``).
 
 Secrets are counted as skipped: Kavlotryx has no secret finding kind yet.
 """

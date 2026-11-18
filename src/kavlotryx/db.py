@@ -160,6 +160,58 @@ class WorkItem(Base):
     verified_by_scan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class TriageDecision(Base):
+    """A risk acceptance (FR-IF-06) or a false-positive call (FR-IF-07) on named findings.
+
+    A decision covers findings by fingerprint, so it holds across rescans. While
+    it is ``active`` its findings have the status ``accepted`` or
+    ``false_positive`` and leave every open queue. When it expires or is revoked
+    they are open again. A scan that no longer reports a finding still fixes it.
+    """
+
+    __tablename__ = "triage_decisions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)  # risk_acceptance | false_positive
+    state: Mapped[str] = mapped_column(String(16), default="proposed", index=True)
+    # proposed -> active | rejected; active -> expired | revoked
+    reason: Mapped[str] = mapped_column(Text)
+    controls: Mapped[str] = mapped_column(Text, default="")  # compensating controls
+    reference: Mapped[str] = mapped_column(String(128), default="")  # e.g. a GRC or change ticket id
+    owner_slug: Mapped[str] = mapped_column(String(64), default="", index=True)
+    max_severity: Mapped[int] = mapped_column(Integer, default=0)
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    requested_by: Mapped[str] = mapped_column(String(128))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_by: Mapped[str] = mapped_column(String(128), default="")
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    ended_by: Mapped[str] = mapped_column(String(128), default="")
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_reason: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(64), default="kavlotryx")  # or "defectdojo:<id>" suggestion
+
+
+class TriageItem(Base):
+    __tablename__ = "triage_items"
+    __table_args__ = (UniqueConstraint("decision_id", "fingerprint"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    decision_id: Mapped[int] = mapped_column(ForeignKey("triage_decisions.id", ondelete="CASCADE"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(80), index=True)
+    finding_id: Mapped[int] = mapped_column(Integer, index=True)
+
+
+class Note(Base):
+    """A note on a finding, work item or triage decision (FR-IF-08). Append-only: never edited or deleted."""
+
+    __tablename__ = "notes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(16), index=True)  # finding | work_item | decision
+    target_id: Mapped[str] = mapped_column(String(80), index=True)
+    author: Mapped[str] = mapped_column(String(128))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class AuditEvent(Base):
     """Append-only record of every write (NFR-SEC-05)."""
 

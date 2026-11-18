@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import date
 from functools import cached_property
 from typing import Any
 
@@ -10,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from kavlotryx.config import EDITABLE_POLICY_KEYS, PolicyConfig, Settings, load_ownership, load_policy
+from kavlotryx.core import triage
 from kavlotryx.core.grouping import rebuild
 from kavlotryx.core.ingest import ingest
 from kavlotryx.core.ownership import Assignment, resolver_for
@@ -67,7 +69,8 @@ class Kavlotryx:
         merged = PolicyConfig.model_validate({**current, **updates})  # raises on bad values
         if not 0 < merged.confidence_limit <= 1:
             raise ValueError("confidence_limit must be between 0 and 1")
-        if any(d < 1 for d in merged.due_days.values()) or merged.scan_stale_hours < 1:
+        if any(d < 1 for d in merged.due_days.values()) or merged.scan_stale_hours < 1 \
+                or any(d < 1 for d in merged.acceptance_max_days.values()):
             raise ValueError("days and hours must be at least 1")
         with self.session() as s:
             for key, value in updates.items():
@@ -133,6 +136,7 @@ class Kavlotryx:
 
     def rebuild(self):
         with self.session() as s:
+            triage.expire_due(s)
             return rebuild(s, self.ownership, self.policy, self.settings.config_dir)
 
     def dispatch(self, dry_run: bool = False, actor: str = "system"):
@@ -150,7 +154,7 @@ class Kavlotryx:
         vf = self.verify(dry_run=dry_run, actor=actor)
         return {"rebuild": rb.__dict__,
                 "dispatch": {a: ds.count(a) for a in ("create", "adopt", "update", "skip", "error")},
-                "verify": {a: vf.count(a) for a in ("verified", "pending", "reopened", "resumed",
+                "verify": {a: vf.count(a) for a in ("verified", "triaged", "pending", "reopened", "resumed",
                                                     "superseded", "missing", "error")}}
 
     # -- ownership --------------------------------------------------------------
@@ -188,6 +192,69 @@ class Kavlotryx:
             s.commit()
             return o
 
+    # -- DefectDojo pull (FR-IN-09) -------------------------------------------------
+
+    def pull_defectdojo(self, products: list[str] | None = None, actor: str = "system", transport=None,
+                        sleep=None) -> list:
+        """Ingest one scan per DefectDojo product, scope ``defectdojo:<product>``."""
+        from kavlotryx.adapters.defectdojo_api import DefectDojoClient
+
+        client = DefectDojoClient(self.settings.defectdojo_url, self.settings.defectdojo_token,
+                                  transport=transport, sleep=sleep)
+        wanted = products or [p.strip() for p in self.settings.defectdojo_products.split(",") if p.strip()]
+        names = wanted or client.products()
+        reports = []
+        for name in names:
+            reports.append(self.ingest("defectdojo", client.findings(name), scope=f"defectdojo:{name}",
+                                       actor=actor))
+        return reports
+
+    # -- triage (FR-IF-06..09) ------------------------------------------------------
+
+    def triage_propose(self, kind: str, finding_ids: list[int], reason: str, actor: str, *,
+                       can_approve: bool = False, controls: str = "", reference: str = "",
+                       expires_on: date | None = None, source: str = "kavlotryx") -> dict[str, Any]:
+        with self.session() as s:
+            d = triage.propose(s, self.policy, kind, finding_ids, reason, actor, can_approve=can_approve,
+                               controls=controls, reference=reference, expires_on=expires_on, source=source)
+            out = triage.decision_dict(s, d, with_findings=False)
+        if out["state"] == "active":
+            self.rebuild()
+        return out
+
+    def triage_propose_work_item(self, key: str, kind: str, reason: str, actor: str, **kw: Any) -> dict[str, Any]:
+        with self.session() as s:
+            ids = list(s.scalars(select(Finding.id).where(Finding.work_item_key == key, Finding.status == "open")))
+        if not ids:
+            raise triage.TriageError(f"work item {key} has no open findings")
+        return self.triage_propose(kind, ids, reason, actor, **kw)
+
+    def triage_decide(self, decision_id: int, action: str, actor: str, note: str = "") -> dict[str, Any]:
+        with self.session() as s:
+            if action == "approve":
+                d = triage.approve(s, self.policy, decision_id, actor, note)
+            elif action == "reject":
+                d = triage.reject(s, decision_id, actor, note)
+            elif action == "revoke":
+                d = triage.revoke(s, decision_id, actor, note)
+            else:
+                raise triage.TriageError("action must be approve, reject or revoke")
+            out = triage.decision_dict(s, d, with_findings=False)
+        if action in ("approve", "revoke"):
+            self.rebuild()
+        return out
+
+    def add_note(self, target_type: str, target_id: str, author: str, body: str) -> dict[str, Any]:
+        with self.session() as s:
+            n = triage.add_note(s, target_type, target_id, author, body)
+            return {"id": n.id, "target": f"{n.target_type}:{n.target_id}", "author": n.author,
+                    "body": n.body, "created_at": triage.iso(n.created_at)}
+
+    def triage_report(self, start: date, end: date, actor: str, owner: str = "") -> dict[str, Any]:
+        with self.session() as s:
+            triage.expire_due(s)
+            return triage.report(s, self.policy, start, end, actor, owner)
+
     # -- reports ----------------------------------------------------------------
 
     def summary(self) -> dict[str, Any]:
@@ -222,6 +289,8 @@ class Kavlotryx:
             "findings": {
                 "open": len(open_f),
                 "fixed": sum(1 for f in findings if f.status == "fixed"),
+                "accepted": sum(1 for f in findings if f.status == "accepted"),
+                "false_positive": sum(1 for f in findings if f.status == "false_positive"),
                 "open_by_severity": dict(Counter(SEVERITY_NAMES.get(f.severity_id, "Unknown")
                                                  for f in open_f)),
             },

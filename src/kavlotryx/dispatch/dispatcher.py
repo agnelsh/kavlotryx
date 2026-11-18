@@ -72,6 +72,11 @@ def describe(wi: WorkItem, members: list[Finding]) -> str:
             lines.append(f"- {m.rule_key} ({sev}) on {m.asset_key}" + (f" {m.path}" if m.path else ""))
     if len(open_m) > MAX_LISTED:
         lines.append(f"- ... and {len(open_m) - MAX_LISTED} more")
+    accepted = sum(1 for m in members if m.status == "accepted")
+    false_p = sum(1 for m in members if m.status == "false_positive")
+    if accepted or false_p:
+        parts = [f"{accepted} risk accepted" if accepted else "", f"{false_p} false positive" if false_p else ""]
+        lines.append(f"Triaged out of this issue in Kavlotryx: {', '.join(p for p in parts if p)}.")
     lines += ["", "Kavlotryx closes this issue only when a new scan no longer reports these findings."]
     return "\n".join(lines)
 

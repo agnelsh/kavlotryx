@@ -7,6 +7,8 @@ ticket's status and compares it with the findings that scans still report:
 * ticket Done, findings remain  -> comment, state ``pending_verification``
 * verified item, finding back   -> reopen the ticket, state ``dispatched``
 * every finding moved to another owner -> close as ``superseded``
+* nothing open, the rest risk accepted or false positive -> close as ``triaged``
+  (not ``verified``: no scan proved a fix). It reopens when the decision ends.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from kavlotryx.core.triage import TRIAGED
 from kavlotryx.db import Finding, WorkItem, audit, utcnow
 from kavlotryx.dispatch.base import TicketTracker, TrackerError
 
@@ -24,7 +27,7 @@ from kavlotryx.dispatch.base import TicketTracker, TrackerError
 @dataclass
 class VerifyAction:
     work_item: str
-    action: str  # verified | pending | reopened | resumed | superseded | missing | error
+    action: str  # verified | triaged | pending | reopened | resumed | superseded | missing | error
     ticket: str = ""
     detail: str = ""
 
@@ -42,6 +45,28 @@ def _verify_one(wi: WorkItem, members: list[Finding], tracker: TicketTracker, dr
                 act: Callable[[str, str], None]) -> None:
     open_m = [m for m in members if m.status == "open"]
     fixed_m = [m for m in members if m.status == "fixed"]
+    triaged_m = [m for m in members if m.status in TRIAGED]
+
+    if not open_m and triaged_m:
+        if wi.state == "triaged":
+            return
+        acc = sum(1 for m in triaged_m if m.status == "accepted")
+        fp = len(triaged_m) - acc
+        what = ", ".join(x for x in (f"{acc} risk accepted" if acc else "", f"{fp} false positive" if fp else "") if x)
+        act("triaged", what + (f", {len(fixed_m)} fixed" if fixed_m else ""))
+        if dry_run:
+            return
+        if wi.ticket_key:
+            status = tracker.status(wi.ticket_key)
+            if status == "missing":
+                return
+            tracker.comment(wi.ticket_key, f"Kavlotryx: no finding in this issue is open. Triage decisions "
+                            f"cover the rest ({what}). Closing as triaged, not as fixed. The issue reopens "
+                            f"when a decision expires or is revoked.")
+            if status != "done":
+                tracker.transition(wi.ticket_key, "done")
+        wi.state = "triaged"
+        return
 
     if not wi.ticket_key:
         if not open_m and fixed_m and wi.state != "verified":
@@ -78,13 +103,13 @@ def _verify_one(wi: WorkItem, members: list[Finding], tracker: TicketTracker, dr
         return
 
     # Some findings are still open.
-    if wi.state in ("verified", "reopened"):
-        act("reopened", f"{len(open_m)} findings are reported again")
+    if wi.state in ("verified", "reopened", "triaged"):
+        act("reopened", f"{len(open_m)} findings are open again")
         if not dry_run:
             if status == "done":
                 tracker.transition(wi.ticket_key, "new")
-            tracker.comment(wi.ticket_key, f"Kavlotryx reopened this issue: a new scan reports "
-                            f"{len(open_m)} of its findings again.")
+            tracker.comment(wi.ticket_key, f"Kavlotryx reopened this issue: {len(open_m)} of its findings "
+                            f"are open again (a new scan reports them, or a triage decision ended).")
             wi.state = "dispatched"
     elif status == "done" and wi.state == "dispatched":
         act("pending", f"ticket is Done but {len(open_m)} findings are still open")

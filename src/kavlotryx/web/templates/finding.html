@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, state_badge, conf %}
+{% from "_parts.html" import status_tag, decision_badge, notes_card, triage_form with context %}
 {% block title %}{{ detail.f.vuln_id or detail.f.rule_key }}{% endblock %}
 {% block content %}
 {% set f = detail.f %}
@@ -10,7 +11,7 @@
     <div class="head-badges">
       {{ sev_badge(f.severity_id) }}
       <span class="tag-dim mono">{{ 'Vulnerability' if f.kind == 'vuln' else 'Misconfiguration' }}</span>
-      <span class="tag-{{ 'ok' if f.status == 'fixed' else 'amber' }} mono">{{ f.status }}{% if f.fixed_at %} {{ f.fixed_at|ago }}{% endif %}</span>
+      {{ status_tag(f) }}{% if f.fixed_at %} <span class="muted small mono">{{ f.fixed_at|ago }}</span>{% endif %}
       <span class="owner-tag {{ 'owner-review' if f.needs_review }}">@{{ f.owner_slug }}</span>
     </div>
     <p class="lede">{{ f.title }}</p>
@@ -60,9 +61,26 @@
       {% if f.description %}<div class="inset"><span class="muted mono caps small">Description</span><p class="small prewrap">{{ f.description|short(2000) }}</p></div>{% endif %}
     </section>
     {% endif %}
+    {{ notes_card(tri.notes, "finding", f.id) }}
   </div>
 
   <div class="stack">
+    <section class="card" id="triage-card">
+      <div class="card-head"><h3>{{ icon("flag") }}Triage</h3>{% if tri.live %}{{ decision_badge(tri.live) }}{% endif %}</div>
+      {% if tri.live %}
+      <p class="small"><a class="link strong" href="/ui/triage/{{ tri.live.id }}">{{ kind_label[tri.live.kind] }} #{{ tri.live.id }}</a>{% if tri.live.expires_on %} · expires {{ tri.live.expires_on }}{% endif %}</p>
+      <p class="muted small prewrap">{{ tri.live.reason|short(300) }}</p>
+      {% elif f.status == 'open' and can_write %}
+      {% set dd_reason = ('DefectDojo finding ' ~ dd ~ ' marks this as ' ~ ('a false positive' if propose == 'false_positive' else 'risk accepted') ~ '. ') if dd else '' %}
+      {% call triage_form(tri.max_days, tri.min_date, tri.max_date, tri.default_date, propose, dd_reason, ('defectdojo:' ~ dd) if dd else '') %}<input type="hidden" name="finding_ids" value="{{ f.id }}">{% endcall %}
+      {% elif f.status == 'open' %}
+      <p class="muted small">Open. Analysts and admins can propose a risk acceptance or a false positive.</p>
+      {% else %}
+      <p class="muted small">{{ 'Fixed by a scan: nothing to triage.' if f.status == 'fixed' else 'Triaged.' }}</p>
+      {% endif %}
+      {% set past = tri.decisions|rejectattr('state', 'in', ['proposed', 'active'])|list %}
+      {% if past %}<p class="muted small">Earlier: {% for d in past %}<a class="link" href="/ui/triage/{{ d.id }}">#{{ d.id }} {{ d.state }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    </section>
     {% if can_write %}
     <section class="card">
       <form class="override" method="post" action="/ui/vulnerabilities/{{ f.id }}/owner">

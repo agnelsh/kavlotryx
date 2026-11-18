@@ -80,6 +80,10 @@ patterns:
   - id: wizcli-image
     owner: app
     name: "wizcli-imagescan"
+  # DefectDojo export (examples/scans/defectdojo-*.json): the product name
+  - id: defectdojo-payments
+    owner: app
+    name: "payments-checkout*"
 
 account_defaults:
   "123456789012": platform

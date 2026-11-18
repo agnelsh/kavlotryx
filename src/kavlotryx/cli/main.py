@@ -29,6 +29,11 @@ app = typer.Typer(help="Kavlotryx: scanner findings to owned, tracked, scan-veri
 owner_app = typer.Typer(help="Explain or override finding owners.", no_args_is_help=True)
 tracker_app = typer.Typer(help="Inspect the fake tracker used for demos.", no_args_is_help=True)
 connectors_app = typer.Typer(help="Microsoft Graph and LeanIX ownership connectors.", no_args_is_help=True)
+triage_app = typer.Typer(help="Risk acceptance, false positives, notes and the audit report.",
+                         no_args_is_help=True)
+pull_app = typer.Typer(help="Pull findings from another system.", no_args_is_help=True)
+app.add_typer(triage_app, name="triage")
+app.add_typer(pull_app, name="pull")
 app.add_typer(owner_app, name="owner")
 app.add_typer(connectors_app, name="connectors")
 app.add_typer(tracker_app, name="tracker")
@@ -299,3 +304,165 @@ def tracker_set_status(key: str, status: Annotated[str, typer.Argument(help="new
 
 if __name__ == "__main__":  # pragma: no cover
     app()
+
+
+# -- pull (FR-IN-09) --------------------------------------------------------------
+
+
+@pull_app.command("defectdojo")
+def pull_defectdojo(
+    product: Annotated[list[str] | None, typer.Option("--product", "-p", help="Product name; repeat. "
+                                                     "Default: KAVLO_DEFECTDOJO_PRODUCTS, else every product")] = None,
+) -> None:
+    """Read findings from DefectDojo API v2 and ingest one scan per product."""
+    from kavlotryx.connectors.base import ConnectorError
+
+    try:
+        reports = svc().pull_defectdojo(product or None, actor=actor())
+    except (ConnectorError, AdapterError) as e:
+        fail(str(e))
+    t = Table("scope", "findings", "new", "fixed", "reopened", "skipped", title="DefectDojo pull")
+    for r in reports:
+        t.add_row(r.scope, str(r.findings_seen), str(r.new), str(r.fixed), str(r.reopened), str(len(r.skipped)))
+    console.print(t)
+
+
+# -- triage (FR-IF-06..09) ---------------------------------------------------------
+
+
+def _triage_fail(e: Exception) -> None:
+    fail(str(e))
+
+
+@triage_app.command("list")
+def triage_list(state: str = "") -> None:
+    """List triage decisions."""
+    from kavlotryx.core import triage as tr
+    from kavlotryx.db import TriageDecision
+
+    with svc().session() as s:
+        q = select(TriageDecision).order_by(TriageDecision.id.desc())
+        if state:
+            q = q.where(TriageDecision.state == state)
+        t = Table("id", "kind", "state", "owner", "findings", "expires", "requested by", "decided by", "reason")
+        for d in s.scalars(q):
+            x = tr.decision_dict(s, d)
+            t.add_row(str(d.id), d.kind, d.state, d.owner_slug, str(x["finding_count"]), str(d.expires_on or ""),
+                      d.requested_by, d.decided_by, d.reason[:60])
+    console.print(t)
+
+
+@triage_app.command("propose")
+def triage_propose(
+    kind: Annotated[str, typer.Argument(help="risk_acceptance | false_positive")],
+    finding_ids: Annotated[list[int] | None, typer.Argument(help="Finding ids")] = None,
+    reason: Annotated[str, typer.Option(help="Why (at least 10 characters)")] = "",
+    work_item: Annotated[str, typer.Option(help="Use every open finding of this work item")] = "",
+    match: Annotated[str, typer.Option(help="Use every open finding with this vulnerability id or rule key")] = "",
+    controls: Annotated[str, typer.Option(help="Compensating controls (risk acceptance)")] = "",
+    expires: Annotated[str, typer.Option(help="Expiry date YYYY-MM-DD (risk acceptance)")] = "",
+    reference: str = "",
+    as_: Annotated[str, typer.Option("--as", help="Requester name for the audit log (default cli:<user>)")] = "",
+) -> None:
+    """Propose a decision. An admin approves it (four eyes: a different person)."""
+    from datetime import date
+
+    from kavlotryx.core.triage import TriageError
+
+    try:
+        exp = date.fromisoformat(expires) if expires else None
+        kw = {"controls": controls, "reference": reference, "expires_on": exp}
+        k = svc()
+        who = as_ or actor()
+        if match:
+            with k.session() as s:
+                finding_ids = list(s.scalars(select(Finding.id).where(
+                    Finding.status == "open", (Finding.vuln_id == match) | (Finding.rule_key == match))))
+            if not finding_ids:
+                fail(f"no open finding has the id or rule {match!r}")
+        d = (k.triage_propose_work_item(work_item, kind, reason, who, **kw) if work_item
+             else k.triage_propose(kind, finding_ids or [], reason, who, **kw))
+    except (TriageError, ValueError) as e:
+        _triage_fail(e)
+    console.print(f"decision #{d['id']} {d['kind']} is {d['state']}. Approve with 'kavlo triage approve {d['id']}'.")
+
+
+@triage_app.command("approve")
+def triage_approve(decision_id: int, note: str = "") -> None:
+    """Approve a proposed decision. Its open findings leave the queues."""
+    _decide(decision_id, "approve", note)
+
+
+@triage_app.command("reject")
+def triage_reject(decision_id: int, note: Annotated[str, typer.Option(help="Why")]) -> None:
+    """Reject a proposed decision."""
+    _decide(decision_id, "reject", note)
+
+
+@triage_app.command("revoke")
+def triage_revoke(decision_id: int, reason: Annotated[str, typer.Option(help="Why")]) -> None:
+    """Revoke a proposed or active decision. Its findings are open again."""
+    _decide(decision_id, "revoke", reason)
+
+
+def _decide(decision_id: int, action: str, note: str) -> None:
+    from kavlotryx.core.triage import TriageError
+
+    try:
+        d = svc().triage_decide(decision_id, action, actor(), note)
+    except TriageError as e:
+        _triage_fail(e)
+    console.print(f"decision #{d['id']} is {d['state']}")
+
+
+@triage_app.command("note")
+def triage_note(
+    target_type: Annotated[str, typer.Argument(help="finding | work_item | decision")],
+    target_id: str,
+    body: str,
+) -> None:
+    """Add a note. Notes are append-only."""
+    from kavlotryx.core.triage import TriageError
+
+    try:
+        n = svc().add_note(target_type, target_id, actor(), body)
+    except TriageError as e:
+        _triage_fail(e)
+    console.print(f"note {n['id']} added to {n['target']}")
+
+
+@triage_app.command("report")
+def triage_report(
+    from_: Annotated[str, typer.Option("--from", help="YYYY-MM-DD (default: 90 days ago)")] = "",
+    to: Annotated[str, typer.Option(help="YYYY-MM-DD (default: today)")] = "",
+    owner: str = "",
+    fmt: Annotated[str, typer.Option("--format", help="json | csv")] = "json",
+    out: Annotated[Path | None, typer.Option(help="Write to this file")] = None,
+) -> None:
+    """Audit-ready triage register with control checks and a SHA-256 digest."""
+    import csv
+    import io
+    from datetime import date, timedelta
+
+    from kavlotryx.core import triage as tr
+    from kavlotryx.db import utcnow
+
+    try:
+        end = date.fromisoformat(to) if to else utcnow().date()
+        start = date.fromisoformat(from_) if from_ else end - timedelta(days=90)
+        rep = svc().triage_report(start, end, actor(), owner)
+    except (tr.TriageError, ValueError) as e:
+        _triage_fail(e)
+    if fmt == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(tr.REGISTER_COLUMNS)
+        w.writerows(tr.register_rows(rep))
+        text = buf.getvalue()
+    else:
+        text = json.dumps(rep, indent=2, default=str)
+    if out:
+        out.write_text(text, encoding="utf-8")
+        console.print(f"wrote {out} ({rep['digest']})")
+    else:
+        console.print(text, markup=False, highlight=False)

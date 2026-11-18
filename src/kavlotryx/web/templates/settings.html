@@ -28,6 +28,11 @@
       <label class="field check"><input type="checkbox" name="dispatch_without_fix" {{ 'checked' if policy.dispatch_without_fix }}><span>Dispatch vulnerabilities with no fix yet <small class="src">{{ sources.dispatch_without_fix }}</small></span></label>
       {{ field("Production tag keys", "production_tag_keys", "text", policy.production_tag_keys|join(', '), "Comma-separated, e.g. env, environment.") }}
       {{ field("Production tag values", "production_values", "text", policy.production_values|join(', '), "A matching tag raises priority one level.") }}
+      <div class="field"><span>Longest risk acceptance by severity (days) <small class="src">{{ sources.acceptance_max_days }}</small></span>
+        <div class="due-row">
+          {% for p in ["Critical", "High", "Medium", "Low"] %}<label class="due"><small class="prio prio-{{ p|lower }}"><i class="dot"></i>{{ p }}</small><input type="number" name="acc_{{ p|lower }}" value="{{ policy.acceptance_max_days.get(p, 365) }}" min="1" max="3650"></label>{% endfor %}
+        </div></div>
+      <label class="field check"><input type="checkbox" name="triage_four_eyes" {{ 'checked' if policy.triage_four_eyes }}><span>Four eyes: a triage decision needs a second admin <small class="src">{{ sources.triage_four_eyes }}</small></span></label>
     </div>
     {% if is_admin %}
     <div class="form-actions"><button class="btn btn-primary">{{ icon("check") }}Save and rebuild</button></div>

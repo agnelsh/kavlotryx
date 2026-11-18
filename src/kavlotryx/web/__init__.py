@@ -1,6 +1,6 @@
 """Web console at /ui (FR-IF-04). Server-rendered, no build step, no external assets.
 
-Menus: Dashboard (persona) · Vulnerabilities (findings, work items) · Ownership · Scanners · Settings.
+Menus: Dashboard (persona) · Vulnerabilities (findings, work items, triage) · Ownership · Scanners · Settings.
 """
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -21,9 +22,10 @@ from kavlotryx import OCSF_VERSION, __version__
 from kavlotryx.adapters import AdapterError, available_adapters
 from kavlotryx.api.auth import ADMIN, INGEST, READ, WRITE, Principal
 from kavlotryx.connectors import CONNECTORS, ConnectorError
+from kavlotryx.core import triage
 from kavlotryx.dispatch.base import TrackerError
 from kavlotryx.service import Kavlotryx, NotFound
-from kavlotryx.web import pages, session, views
+from kavlotryx.web import pages, session, triage_pages, views
 
 HERE = Path(__file__).parent
 CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
@@ -78,7 +80,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
     env = templates.env
     env.filters.update(dt=_fmt_dt, ago=_ago, short=_short, sev=views.sev_name, hours=_hours)
     env.globals.update(version=__version__, ocsf_version=OCSF_VERSION, rule_family=views.rule_family,
-                       personas=pages.PERSONAS)
+                       personas=pages.PERSONAS, kind_label=triage.KIND_LABEL)
     app.mount("/ui/static", StaticFiles(directory=str(HERE / "static")), name="ui-static")
 
     settings = svc.settings
@@ -246,13 +248,18 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                                           "X-Content-Type-Options": "nosniff"})
 
     @app.get("/ui/vulnerabilities/{fid}", include_in_schema=False)
-    def finding(request: Request, fid: int, tab: str = "trace"):
+    def finding(request: Request, fid: int, tab: str = "trace", propose: str = "", dd: str = ""):
         who = session.current(request)
+        policy = svc.policy
         with svc.session() as s:
             detail = views.finding_detail(s, fid)
+            box = triage_pages.triage_box(s, detail["f"], policy) if detail else None
         if detail is None:
             return render(request, "notfound.html", {"what": f"finding {fid}"}, who, status=404)
         return render(request, "finding.html", {"detail": detail, "explain": svc.explain(fid), "tab": tab,
+                                                "tri": box, "kind_label": triage.KIND_LABEL,
+                                                "propose": propose if propose in triage.KINDS else "",
+                                                "dd": dd if dd.isdigit() else "",
                                                 "owner_choices": [o.slug for o in svc.ownership.owners],
                                                 "limit": svc.policy.confidence_limit,
                                                 "path": "/ui/vulnerabilities"}, who)
@@ -280,11 +287,122 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
     @app.get("/ui/workitems/{key}", include_in_schema=False)
     def workitem(request: Request, key: str):
         who = session.current(request)
+        policy = svc.policy
         with svc.session() as s:
             data = views.workitem_detail(s, key)
+            if data is not None:
+                data["tri"] = triage_pages.work_item_box(s, data["w"], list(data["members"]), policy)
         if data is None:
             return render(request, "notfound.html", {"what": f"work item {key}"}, who, status=404)
         return render(request, "workitem.html", {**data, "path": "/ui/vulnerabilities"}, who)
+
+    # -- triage (FR-IF-06..09) -----------------------------------------------------------
+
+    @app.get("/ui/triage", include_in_schema=False)
+    def triage_view(request: Request, state: str = "", kind: str = ""):
+        who = session.current(request)
+        state = state if state in {k for k, _ in triage_pages.DECISION_STATES} else ""
+        kind = kind if kind in triage.KINDS else ""
+        with svc.session() as s:
+            triage.expire_due(s)
+            data = triage_pages.triage_page(s, state, kind)
+        return render(request, "triage.html", {**data, "kind_label": triage.KIND_LABEL, "policy": svc.policy,
+                                               "path": "/ui/vulnerabilities"}, who)
+
+    @app.get("/ui/triage/report", include_in_schema=False)
+    def triage_report_view(request: Request, start: str = Query("", alias="from"), end: str = Query("", alias="to"),
+                           owner: str = ""):
+        who = session.current(request)
+        st, en = triage_pages.report_period(start, end)
+        owner = owner if owner in {o.slug for o in svc.ownership.owners} | {"mixed"} else ""
+        try:
+            rep = svc.triage_report(st, en, f"ui:{who.name}", owner)
+        except triage.TriageError as e:
+            return session.redirect("/ui/triage/report", "error", str(e))
+        return render(request, "triage_report.html", {"rep": rep, "owner": owner, "start": st, "end": en,
+                                                      "owners": [o.slug for o in svc.ownership.owners],
+                                                      "kind_label": triage.KIND_LABEL,
+                                                      "path": "/ui/vulnerabilities"}, who)
+
+    @app.get("/ui/triage/report.{fmt}", include_in_schema=False)
+    def triage_report_file(request: Request, fmt: str, start: str = Query("", alias="from"),
+                           end: str = Query("", alias="to"), owner: str = ""):
+        import json as _json
+
+        who = session.current(request)
+        st, en = triage_pages.report_period(start, end)
+        rep = svc.triage_report(st, en, f"ui:{who.name}", owner[:64])
+        name = f"kavlotryx-triage-{st}-{en}"
+        headers = {"X-Content-Type-Options": "nosniff", "X-Report-Digest": rep["digest"]}
+        if fmt == "json":
+            headers["Content-Disposition"] = f'attachment; filename="{name}.json"'
+            return Response(_json.dumps(rep, indent=2, default=str), media_type="application/json", headers=headers)
+        if fmt == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(triage.REGISTER_COLUMNS)
+            for row in triage.register_rows(rep):
+                w.writerow([pages.csv_safe(x) for x in row])
+            headers["Content-Disposition"] = f'attachment; filename="{name}.csv"'
+            return Response(buf.getvalue(), media_type="text/csv", headers=headers)
+        return render(request, "notfound.html", {"what": f"report format {fmt}"}, who, status=404)
+
+    @app.get("/ui/triage/{did}", include_in_schema=False)
+    def decision_view(request: Request, did: int):
+        who = session.current(request)
+        with svc.session() as s:
+            data = triage_pages.decision_page(s, did, svc.policy)
+        if data is None:
+            return render(request, "notfound.html", {"what": f"decision {did}"}, who, status=404)
+        return render(request, "decision.html", {**data, "kind_label": triage.KIND_LABEL,
+                                                 "path": "/ui/vulnerabilities"}, who)
+
+    @app.post("/ui/triage", include_in_schema=False)
+    def triage_propose(request: Request, kind: str = Form(...), reason: str = Form(""),
+                       finding_ids: str = Form(""), work_item: str = Form(""), controls: str = Form(""),
+                       reference: str = Form(""), expires_on: str = Form(""), source: str = Form(""),
+                       csrf: str = Form("")):
+        who = writer(request, csrf)
+        fallback = f"/ui/workitems/{work_item}" if work_item else "/ui/triage"
+        try:
+            ids = [int(x) for x in re.split(r"[\s,]+", finding_ids.strip()) if x]
+            exp = date.fromisoformat(expires_on) if expires_on else None
+        except ValueError:
+            return session.redirect(back(request, fallback), "error", "Finding ids or the date are not valid.")
+        kw = {"can_approve": who.role in ADMIN, "controls": controls, "reference": reference, "expires_on": exp,
+              "source": source if source.startswith("defectdojo:") else "kavlotryx"}
+        try:
+            if work_item:
+                d = svc.triage_propose_work_item(work_item, kind, reason, f"ui:{who.name}", **kw)
+            else:
+                d = svc.triage_propose(kind, ids, reason, f"ui:{who.name}", **kw)
+        except triage.TriageError as e:
+            return session.redirect(back(request, fallback), "error", f"Not saved: {e}")
+        what = triage.KIND_LABEL[d["kind"]].lower()
+        msg = (f"Decision #{d['id']} ({what}) is active." if d["state"] == "active"
+               else f"Decision #{d['id']} ({what}) is proposed. An admin other than you approves it.")
+        return session.redirect(f"/ui/triage/{d['id']}", "ok", msg)
+
+    @app.post("/ui/triage/{did}/{action}", include_in_schema=False)
+    def triage_decide(request: Request, did: int, action: str, note: str = Form(""), csrf: str = Form("")):
+        who = writer(request, csrf, ADMIN if action in ("approve", "reject") else WRITE)
+        try:
+            d = svc.triage_decide(did, action, f"ui:{who.name}", note)
+        except triage.TriageError as e:
+            return session.redirect(f"/ui/triage/{did}", "error", f"Not done: {e}")
+        return session.redirect(f"/ui/triage/{did}", "ok", f"Decision #{did} is {d['state']}. Work items rebuilt."
+                                if action != "reject" else f"Decision #{did} is rejected.")
+
+    @app.post("/ui/notes/{target_type}/{target_id}", include_in_schema=False)
+    def add_note(request: Request, target_type: str, target_id: str, body: str = Form(""), csrf: str = Form("")):
+        who = writer(request, csrf)
+        dest = {"finding": f"/ui/vulnerabilities/{target_id}", "work_item": f"/ui/workitems/{target_id}",
+                "decision": f"/ui/triage/{target_id}"}.get(target_type, "/ui/triage")
+        try:
+            svc.add_note(target_type, target_id, f"ui:{who.name}", body)
+        except triage.TriageError as e:
+            return session.redirect(dest, "error", f"Note not saved: {e}")
+        return session.redirect(dest + "#notes", "ok", "Note added.")
 
     # old URLs from the first console
     @app.get("/ui/findings", include_in_schema=False)
@@ -379,7 +497,10 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                         due_critical: int = Form(...), due_high: int = Form(...), due_medium: int = Form(...),
                         due_low: int = Form(...), dispatch_min_priority: str = Form(...),
                         dispatch_without_fix: str = Form(""), production_tag_keys: str = Form(""),
-                        production_values: str = Form(""), scan_stale_hours: int = Form(...)):
+                        production_values: str = Form(""), scan_stale_hours: int = Form(...),
+                        acc_critical: int | None = Form(None), acc_high: int | None = Form(None),
+                        acc_medium: int | None = Form(None), acc_low: int | None = Form(None),
+                        triage_four_eyes: str | None = Form(None)):
         who = writer(request, csrf, ADMIN)
         split = lambda v: [x.strip() for x in v.split(",") if x.strip()]  # noqa: E731
         updates = {
@@ -389,6 +510,10 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             "production_tag_keys": split(production_tag_keys), "production_values": split(production_values),
             "scan_stale_hours": scan_stale_hours,
         }
+        if acc_critical is not None:  # the triage fields came with the form
+            updates["acceptance_max_days"] = {"Critical": acc_critical, "High": acc_high or 1,
+                                              "Medium": acc_medium or 1, "Low": acc_low or 1}
+            updates["triage_four_eyes"] = triage_four_eyes == "on"
         if dispatch_min_priority not in ("Low", "Medium", "High", "Critical"):
             return session.redirect("/ui/settings", "error", "Unknown priority.")
         current = svc.policy.model_dump()
@@ -428,7 +553,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                 msg = f"Dispatch: {msg}"
             elif action == "verify":
                 r = svc.verify(actor=actor)
-                msg = ", ".join(f"{r.count(a)} {a}" for a in ("verified", "pending", "reopened", "resumed",
+                msg = ", ".join(f"{r.count(a)} {a}" for a in ("verified", "triaged", "pending", "reopened", "resumed",
                                                               "superseded", "missing", "error")
                                 if r.count(a)) or "Nothing changed."
                 msg = f"Verify: {msg}"

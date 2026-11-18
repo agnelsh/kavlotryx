@@ -123,7 +123,7 @@ def rebuild(
         if wi is None:
             wi = WorkItem(key=key, owner_slug=owner, kind=kind, created_at=now, state="open")
             session.add(wi)
-        elif wi.state in ("verified", "superseded"):
+        elif wi.state in ("verified", "superseded", "triaged"):
             wi.state = "reopened"
             reopened += 1
         wi.artifact = ident.get("artifact", "")

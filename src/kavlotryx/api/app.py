@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -16,6 +16,24 @@ from kavlotryx.config import Settings
 from kavlotryx.db import Finding, FindingSource, Scan, WorkItem, utcnow
 from kavlotryx.ocsf.severity import SEVERITY_NAMES
 from kavlotryx.service import Kavlotryx, NotFound
+
+
+class TriageIn(BaseModel):
+    kind: str  # risk_acceptance | false_positive
+    finding_ids: list[int] = []
+    work_item: str = ""  # or: every open finding of this work item
+    reason: str
+    controls: str = ""
+    reference: str = ""
+    expires_on: date | None = None
+
+
+class DecideIn(BaseModel):
+    note: str = ""
+
+
+class NoteIn(BaseModel):
+    body: str
 
 
 class OwnerOverrideIn(BaseModel):
@@ -99,6 +117,17 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
         except (AdapterError, UnicodeDecodeError) as e:
             raise HTTPException(422, str(e)) from e
         return report.as_dict()
+
+    @app.post("/api/v1/scans/defectdojo/pull", tags=["scans"])
+    def pull_defectdojo(product: list[str] = Query([]), who: Principal = Depends(require(ADMIN))):  # noqa: B006
+        """Read findings from KAVLO_DEFECTDOJO_URL (API v2) and ingest one scan per product (FR-IN-09)."""
+        from kavlotryx.connectors.base import ConnectorError
+
+        try:
+            reports = svc.pull_defectdojo(product or None, actor=who.name)
+        except (ConnectorError, AdapterError) as e:
+            raise HTTPException(422, str(e)) from e
+        return [r.as_dict() for r in reports]
 
     @app.get("/api/v1/scans", tags=["scans"])
     def list_scans(limit: int = Query(50, le=500), _: Principal = Depends(require(READ))):
@@ -201,6 +230,81 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
     @app.get("/api/v1/reports/summary", tags=["reports"])
     def summary(_: Principal = Depends(require(READ))):
         return svc.summary()
+
+    # -- triage (FR-IF-06..09) ------------------------------------------------------
+
+    from kavlotryx.core import triage as tr
+
+    def _triage_err(e: Exception) -> HTTPException:
+        return HTTPException(404 if "not found" in str(e) else 422, str(e))
+
+    @app.get("/api/v1/triage/decisions", tags=["triage"])
+    def list_decisions(state: str | None = None, kind: str | None = None, _: Principal = Depends(require(READ))):
+        from kavlotryx.db import TriageDecision
+
+        q = select(TriageDecision).order_by(TriageDecision.id.desc())
+        if state:
+            q = q.where(TriageDecision.state == state)
+        if kind:
+            q = q.where(TriageDecision.kind == kind)
+        with svc.session() as s:
+            return [tr.decision_dict(s, d, with_findings=False) for d in s.scalars(q.limit(1000))]
+
+    @app.get("/api/v1/triage/decisions/{decision_id}", tags=["triage"])
+    def get_decision(decision_id: int, _: Principal = Depends(require(READ))):
+        with svc.session() as s:
+            try:
+                d = tr.get(s, decision_id)
+            except tr.TriageError as e:
+                raise _triage_err(e) from e
+            return {**tr.decision_dict(s, d), "notes": [
+                {"id": n.id, "author": n.author, "body": n.body, "created_at": n.created_at}
+                for n in tr.notes_for(s, "decision", str(d.id))]}
+
+    @app.post("/api/v1/triage/decisions", status_code=201, tags=["triage"])
+    def post_decision(body: TriageIn, who: Principal = Depends(require(WRITE))):
+        kw = {"can_approve": who.role in ADMIN, "controls": body.controls, "reference": body.reference,
+              "expires_on": body.expires_on}
+        try:
+            if body.work_item:
+                return svc.triage_propose_work_item(body.work_item, body.kind, body.reason, who.name, **kw)
+            return svc.triage_propose(body.kind, body.finding_ids, body.reason, who.name, **kw)
+        except tr.TriageError as e:
+            raise _triage_err(e) from e
+
+    @app.post("/api/v1/triage/decisions/{decision_id}/{action}", tags=["triage"])
+    def decide(decision_id: int, action: str, body: DecideIn, who: Principal = Depends(require(WRITE))):
+        """approve and reject need the admin role; revoke needs analyst or admin."""
+        if action in ("approve", "reject") and who.role not in ADMIN:
+            raise HTTPException(403, f"role {who.role} may not {action}")
+        try:
+            return svc.triage_decide(decision_id, action, who.name, body.note)
+        except tr.TriageError as e:
+            raise _triage_err(e) from e
+
+    @app.get("/api/v1/notes/{target_type}/{target_id}", tags=["triage"])
+    def get_notes(target_type: str, target_id: str, _: Principal = Depends(require(READ))):
+        with svc.session() as s:
+            return [{"id": n.id, "author": n.author, "body": n.body, "created_at": n.created_at}
+                    for n in tr.notes_for(s, target_type, target_id)]
+
+    @app.post("/api/v1/notes/{target_type}/{target_id}", status_code=201, tags=["triage"])
+    def post_note(target_type: str, target_id: str, body: NoteIn, who: Principal = Depends(require(WRITE))):
+        try:
+            return svc.add_note(target_type, target_id, who.name, body.body)
+        except tr.TriageError as e:
+            raise _triage_err(e) from e
+
+    @app.get("/api/v1/reports/triage", tags=["reports"])
+    def triage_report(start: date | None = Query(None, alias="from"), end: date | None = Query(None, alias="to"),
+                      owner: str = "", who: Principal = Depends(require(READ))):
+        """Audit-ready triage register for a period (default: the last 90 days), with a SHA-256 digest."""
+        end = end or utcnow().date()
+        start = start or end - timedelta(days=90)
+        try:
+            return svc.triage_report(start, end, who.name, owner)
+        except tr.TriageError as e:
+            raise _triage_err(e) from e
 
     @app.get("/api/v1/people", tags=["ownership"])
     def people_view(_: Principal = Depends(require(READ))):

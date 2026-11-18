@@ -27,6 +27,9 @@ step "Day 1: a Wiz Issues export (Azure + Kubernetes, Wiz demo tenant) and a wiz
 $KAVLO ingest $S/wiz/multiple_findings.csv --scanner wiz
 $KAVLO ingest $S/wizcli_img/wizcli_img_many_vul.json --scanner wiz
 
+step "Day 1: a DefectDojo findings export (API v2, made-up product payments-checkout)"
+$KAVLO ingest examples/scans/defectdojo-payments-checkout.json --scanner defectdojo
+
 step "Prowler upgraded to 4.5 and run again: the new output format adds no duplicates"
 $KAVLO ingest $S/aws_prowler_v3plus/many_vuln_after_4_5_0.ocsf.json --scanner prowler --scope $ACCOUNT
 
@@ -37,9 +40,26 @@ step "Owners, groups and tickets"
 $KAVLO run
 $KAVLO workitems
 
+step "Triage: an analyst proposes, a second person approves (four eyes)"
+PY="${PYTHON:-.venv/bin/python}"
+EXP=$("$PY" -c 'import datetime; print(datetime.date.today() + datetime.timedelta(days=60))')
+$KAVLO triage propose false_positive --match "defectdojo:ZAP Scan/CWE-693" --as cli:riley \
+  --reason "DefectDojo marks this false positive: the CDN sets the CSP header, ZAP scanned the origin"
+$KAVLO triage approve 1 --note "Checked the CDN response headers"
+$KAVLO triage propose risk_acceptance --match CVE-2022-40897 --as cli:riley --expires "$EXP" \
+  --reason "setuptools is only used at build time; the upgrade waits for the base image refresh" \
+  --controls "Build runs in an isolated CI job with no network to production" --reference CHG-1042
+$KAVLO triage approve 2
+$KAVLO triage propose false_positive --match "defectdojo:Semgrep JSON Report/python.lang.security.audit.formatted-sql-query" \
+  --as cli:riley --reason "The formatted part is a constant table name, not user input"
+$KAVLO triage note decision 3 "Asked the payments team to confirm the table name never comes from a request"
+$KAVLO run
+$KAVLO triage list
+
 step "Day 2: two IAM roles fixed; one remains. The rebuilt image has no vulnerabilities"
 $KAVLO ingest $S/aws_prowler_v3plus/one_vuln.ocsf.json --scanner prowler --scope $ACCOUNT
 $KAVLO ingest $S/wizcli_img/wizcli_img_zero_vul.json --scanner wiz
+$KAVLO ingest examples/scans/defectdojo-payments-checkout-day2.json --scanner defectdojo
 $KAVLO run
 
 step "Day 3: Prowler reports nothing; the last IAM ticket closes on scan proof"
@@ -51,6 +71,9 @@ $KAVLO report
 
 if [ "${1:-}" = "--serve" ]; then
   [ -f "$DIR/demo-tokens" ] || printf 'demo:admin:%s,viewer:viewer:%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" > "$DIR/demo-tokens"
+  # an analyst proposes triage decisions; the demo admin approves them (four eyes)
+  grep -q ':analyst:' "$DIR/demo-tokens" || sed -i.bak "s/\$/,riley:analyst:$(openssl rand -hex 16)/" "$DIR/demo-tokens"
+  rm -f "$DIR/demo-tokens.bak"
   chmod 600 "$DIR/demo-tokens"
   export KAVLO_API_TOKENS="$(cat "$DIR/demo-tokens")"
   echo "console: http://127.0.0.1:${2:-8080}/ui (tokens in $DIR/demo-tokens)"

@@ -50,6 +50,8 @@
 <nav class="tabs tabs-lg page-tabs" aria-label="Vulnerabilities">
   <a class="{{ 'on' if active == 'findings' }}" href="/ui/vulnerabilities">{{ icon("bug") }}Findings</a>
   <a class="{{ 'on' if active == 'items' }}" href="/ui/workitems">{{ icon("ticket") }}Work items &amp; tickets</a>
+  <a class="{{ 'on' if active == 'triage' }}" href="/ui/triage">{{ icon("flag") }}Triage</a>
+  <a class="{{ 'on' if active == 'report' }}" href="/ui/triage/report">{{ icon("verified") }}Audit report</a>
 </nav>
 {% endmacro %}
 
@@ -83,4 +85,54 @@
 
 {% macro sev_counts(st) %}
 <span class="sev-counts mono">{% if st.critical %}<b class="t-crit">{{ st.critical }} C</b>{% endif %}{% if st.high %}<b class="t-orange">{{ st.high }} H</b>{% endif %}{% if not st.critical and not st.high %}<span class="muted">—</span>{% endif %}</span>
+{% endmacro %}
+
+{% macro status_tag(f) %}
+{%- if f.status == 'fixed' -%}<span class="tag-ok mono">fixed{% if f.fixed_by_scan_id %} · scan #{{ f.fixed_by_scan_id }}{% endif %}</span>
+{%- elif f.status == 'accepted' -%}<span class="tag-violet mono">risk accepted</span>
+{%- elif f.status == 'false_positive' -%}<span class="tag-dim mono">false positive</span>
+{%- else -%}<span class="tag-amber mono">{{ f.status }}</span>{%- endif -%}
+{% endmacro %}
+
+{% macro decision_badge(d) %}<span class="badge dst dst-{{ d.state }}">{{ {"proposed": "Waiting for approval", "active": "Active", "expired": "Expired", "revoked": "Revoked", "rejected": "Rejected"}.get(d.state, d.state) }}</span>{% endmacro %}
+
+{% macro notes_card(notes, target_type, target_id) %}
+<section class="card" id="notes">
+  <div class="card-head"><h2>{{ icon("terminal") }}Notes <span class="pill mono">{{ notes|length }}</span></h2><span class="muted small">append-only · in the audit report</span></div>
+  {% if notes %}
+  <ol class="notes">
+    {% for n in notes %}<li><div class="note-head mono small"><b>{{ n.author }}</b><span class="muted">{{ n.created_at|dt }}</span></div><p class="prewrap small">{{ n.body }}</p></li>{% endfor %}
+  </ol>
+  {% else %}<p class="muted small">No notes yet.</p>{% endif %}
+  {% if can_write %}
+  <form class="note-form" method="post" action="/ui/notes/{{ target_type }}/{{ target_id }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="body" rows="3" maxlength="4000" required placeholder="Add a note. Notes cannot be edited or deleted." aria-label="Note"></textarea>
+    <button class="btn btn-outline">{{ icon("check") }}Add note</button>
+  </form>
+  {% endif %}
+</section>
+{% endmacro %}
+
+{% macro triage_form(max_days, min_date, max_date, default_date, kind="", reason="", source="") %}
+<form class="override triage-form" method="post" action="/ui/triage" id="triage">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {{ caller() }}
+  {% if source %}<input type="hidden" name="source" value="{{ source }}">{% endif %}
+  <b>{{ icon("flag") }}New decision <small class="muted">{{ 'an admin other than you approves' if not is_admin else 'another admin approves (four eyes)' }}</small></b>
+  <label class="field"><span>Decision</span>
+    <select name="kind" aria-label="Decision">
+      <option value="false_positive" {{ 'selected' if kind == 'false_positive' }}>False positive: the scanner is wrong</option>
+      <option value="risk_acceptance" {{ 'selected' if kind == 'risk_acceptance' }}>Risk acceptance: real, but we accept it for now</option>
+    </select></label>
+  <label class="field"><span>Reason</span><textarea name="reason" rows="3" minlength="10" maxlength="4000" required placeholder="Why. At least 10 characters. Kept in the audit report.">{{ reason }}</textarea></label>
+  <details class="ra-only"><summary class="small">Risk acceptance details (required for a risk acceptance)</summary>
+    <label class="field"><span>Compensating controls</span><textarea name="controls" rows="2" maxlength="4000" placeholder="What reduces the risk meanwhile, or 'none'"></textarea></label>
+    <div class="override-row">
+      <label class="field"><span>Expires on <small>max {{ max_days }} days</small></span><input type="date" name="expires_on" min="{{ min_date }}" max="{{ max_date }}" value="{{ default_date }}"></label>
+      <label class="field"><span>Reference</span><input name="reference" maxlength="128" placeholder="GRC or change id"></label>
+    </div>
+  </details>
+  <button class="btn btn-primary btn-block">{{ icon("check") }}Propose decision</button>
+</form>
 {% endmacro %}

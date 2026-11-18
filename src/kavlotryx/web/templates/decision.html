@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, sev_badge %}
+{% from "_parts.html" import decision_badge, status_tag, notes_card with context %}
+{% block title %}Decision #{{ d.id }}{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="crumbs mono"><a href="/ui/vulnerabilities">Vulnerabilities</a> / <a href="/ui/triage">Triage</a> / <b>decision {{ d.id }}</b></div>
+    <h1>{{ kind_label[d.kind] }} #{{ d.id }}</h1>
+    <div class="head-badges">
+      {{ decision_badge(d) }}
+      {{ sev_badge(d.max_severity) }}
+      <span class="owner-tag">@{{ d.owner_slug }}</span>
+      {% if d.expires_on %}<span class="tag-{{ 'crit' if days_left is not none and days_left <= 7 and d.state == 'active' else 'dim' }} mono">{{ icon("clock") }}expires {{ d.expires_on }}{% if d.state == 'active' %} · {{ days_left }}d left{% endif %}</span>{% endif %}
+      {% if d.source != 'kavlotryx' %}<span class="tag-dim mono">from {{ d.source }}</span>{% endif %}
+    </div>
+    <p class="lede prewrap">{{ d.reason }}</p>
+  </div>
+</section>
+
+<div class="split split-7-5">
+  <div class="stack">
+    <section class="card">
+      <div class="card-head"><h2>{{ icon("layers") }}Findings <span class="pill mono">{{ findings|length }}</span></h2>
+        {% for k in work_items %}<a class="owner-tag" href="/ui/workitems/{{ k }}">{{ k[:9]|upper }}</a> {% endfor %}</div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>Finding</th><th>Severity</th><th>Asset</th><th>Owner</th><th>Status now</th></tr></thead>
+        <tbody>{% for f in findings %}
+        <tr class="{{ 'row-dim' if f.status == 'fixed' }}"><td><a class="mono strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.vuln_id or f.rule_key }}</a><br><small class="muted">{{ f.title|short(70) }}</small></td>
+          <td>{{ sev_badge(f.severity_id) }}</td><td class="mono small"><span class="trunc-block" title="{{ f.asset_key }}">{{ f.package ~ ' ' ~ f.installed_version if f.package else (f.asset_name or f.asset_key) }}</span></td>
+          <td><span class="owner-tag">@{{ f.owner_slug }}</span></td><td>{{ status_tag(f) }}</td></tr>
+        {% endfor %}</tbody></table></div>
+    </section>
+    {{ notes_card(notes, "decision", d.id) }}
+  </div>
+
+  <div class="stack">
+    {% if d.state == 'proposed' and is_admin %}
+    <section class="card">
+      {% set mine = four_eyes and d.requested_by == 'ui:' ~ who.name %}
+      {% if mine %}
+      <p class="inset small">{{ icon("warning") }}You proposed this decision. Four eyes is on, so another admin approves or rejects it.</p>
+      {% else %}
+      <form class="override" method="post" action="/ui/triage/{{ d.id }}/approve">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <b>{{ icon("check") }}Approve <small class="muted">its open findings leave the queues</small></b>
+        <textarea name="note" rows="2" maxlength="4000" placeholder="Approval note (optional, kept in the audit report)" aria-label="Approval note"></textarea>
+        <button class="btn btn-primary btn-block">{{ icon("check") }}Approve decision</button>
+      </form>
+      <form class="override" method="post" action="/ui/triage/{{ d.id }}/reject">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <b>{{ icon("x") }}Reject</b>
+        <textarea name="note" rows="2" maxlength="4000" required placeholder="Why it is rejected" aria-label="Rejection reason"></textarea>
+        <button class="btn btn-outline btn-block">{{ icon("x") }}Reject decision</button>
+      </form>
+      {% endif %}
+    </section>
+    {% endif %}
+    <section class="card">
+      <div class="card-head"><h3>{{ icon("fingerprint") }}Decision record</h3>{{ decision_badge(d) }}</div>
+      <dl class="kv mono small">
+        <dt>kind</dt><dd>{{ d.kind }}</dd>
+        <dt>requested</dt><dd>{{ d.requested_by }} · {{ d.requested_at|dt }}</dd>
+        {% if d.decided_by %}<dt>{{ 'rejected' if d.state == 'rejected' else 'approved' }}</dt><dd>{{ d.decided_by }} · {{ d.decided_at|dt }}</dd>
+        <dt>four eyes</dt><dd class="{{ 't-ok' if d.decided_by != d.requested_by else 't-amber' }}">{{ 'yes: approver ≠ requester' if d.decided_by != d.requested_by else 'no: self-approved' }}</dd>{% endif %}
+        {% if d.decision_note %}<dt>decision note</dt><dd class="prewrap">{{ d.decision_note }}</dd>{% endif %}
+        {% if d.controls %}<dt>controls</dt><dd class="prewrap">{{ d.controls }}</dd>{% endif %}
+        {% if d.reference %}<dt>reference</dt><dd>{{ d.reference }}</dd>{% endif %}
+        <dt>expires</dt><dd>{{ d.expires_on or 'never (false positive)' }}</dd>
+        {% if d.ended_by %}<dt>{{ d.state }}</dt><dd>{{ d.ended_by }} · {{ d.ended_at|dt }}</dd><dt>why</dt><dd class="prewrap">{{ d.end_reason }}</dd>{% endif %}
+        <dt>source</dt><dd>{{ d.source }}</dd>
+      </dl>
+    </section>
+    {% if d.state in ('proposed', 'active') and can_write %}
+    <section class="card">
+      <form class="override" method="post" action="/ui/triage/{{ d.id }}/revoke">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <b>{{ icon("refresh") }}{{ 'Revoke' if d.state == 'active' else 'Withdraw' }} <small class="muted">{{ 'its findings are open again' if d.state == 'active' else 'nothing changes on the findings' }}</small></b>
+        <textarea name="note" rows="2" maxlength="4000" required placeholder="Why" aria-label="Revoke reason"></textarea>
+        <button class="btn btn-outline btn-block">{{ icon("refresh") }}{{ 'Revoke' if d.state == 'active' else 'Withdraw' }} decision</button>
+      </form>
+    </section>
+    {% endif %}
+    <section class="card">
+      <div class="card-head"><h3>{{ icon("clock") }}Audit trail</h3></div>
+      <ol class="timeline">
+        {% for e in events %}
+        <li class="tl tl-{{ 'ok' if e.action == 'triage.approve' else 'warn' if e.action in ('triage.reject', 'triage.revoked', 'triage.expired') else '' }}"><span class="tl-dot">{{ icon("check" if e.action == 'triage.approve' else "clock") }}</span>
+          <div><b>{{ e.action.replace('triage.', '')|capitalize }}</b><small class="muted"> {{ e.at|dt }}</small><p class="muted small">by {{ e.actor }}{% if e.detail.findings_changed is defined %} · {{ e.detail.findings_changed }} findings changed{% endif %}{% if e.detail.findings_reopened is defined %} · {{ e.detail.findings_reopened }} findings open again{% endif %}</p></div></li>
+        {% endfor %}
+      </ol>
+    </section>
+  </div>
+</div>
+{% endblock %}

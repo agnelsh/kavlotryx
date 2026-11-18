@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, sev_badge %}
+{% from "_parts.html" import vuln_tabs, decision_badge with context %}
+{% block title %}Triage{% endblock %}
+{% block content %}
+<section class="head">
+  <div>
+    <div class="eyebrow"><i class="dot dot-amber pulse"></i>Vulnerabilities · <span class="t-violet">Triage</span></div>
+    <h1>Triage</h1>
+    <p class="lede">Risk acceptances and false positives. A decision takes findings out of the open queues only after an admin approves it{{ ', and the approver must be another person' if policy.triage_four_eyes }}. A risk acceptance always expires.</p>
+  </div>
+  <div class="head-actions"><a class="btn btn-outline" href="/ui/triage/report">{{ icon("verified") }}Audit report</a></div>
+</section>
+
+{{ vuln_tabs("triage") }}
+
+<section class="kpis">
+  <a class="kpi {{ 'kpi-warn' if proposed }}" href="/ui/triage?state=proposed"><span class="kpi-label">Waiting for approval</span><b class="kpi-value {{ 't-amber' if proposed }}">{{ proposed|length }}</b><span class="kpi-note">proposed decisions</span></a>
+  <a class="kpi" href="/ui/vulnerabilities?status=accepted"><span class="kpi-label">Risk accepted</span><b class="kpi-value t-violet">{{ accepted }}</b><span class="kpi-note">findings, until their expiry</span></a>
+  <a class="kpi" href="/ui/vulnerabilities?status=false_positive"><span class="kpi-label">False positives</span><b class="kpi-value">{{ false_positive }}</b><span class="kpi-note">findings</span></a>
+  <div class="kpi {{ 'kpi-warn' if expiring }}"><span class="kpi-label">Expiring in 30 days</span><b class="kpi-value {{ 't-amber' if expiring }}">{{ expiring|length }}</b><span class="kpi-note">risk acceptances</span></div>
+  <div class="kpi"><span class="kpi-label">Suggestions</span><b class="kpi-value">{{ suggestions|length }}</b><span class="kpi-note">from DefectDojo</span></div>
+</section>
+
+{% if proposed %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("clock") }}Waiting for approval</h2><span class="muted small">{{ 'admins approve or reject' if not is_admin else 'open one to approve or reject' }}</span></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Decision</th><th>Kind</th><th>Reason</th><th class="num">Findings</th><th>Highest</th><th>Requested</th><th>Expires</th></tr></thead>
+    <tbody>{% for d in proposed %}
+    <tr><td class="mono"><a class="t-amber strong" href="/ui/triage/{{ d.id }}">#{{ d.id }}</a><br><small class="muted">@{{ d.owner_slug }}</small></td>
+      <td>{{ kind_label[d.kind] }}</td><td class="small">{{ d.reason|short(120) }}</td>
+      <td class="num mono">{{ counts.get(d.id, '—') }}</td><td>{{ sev_badge(d.max_severity) }}</td>
+      <td class="small mono">{{ d.requested_by }}<br><span class="muted">{{ d.requested_at|ago }}</span></td>
+      <td class="mono small">{{ d.expires_on or '—' }}</td></tr>
+    {% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+{% if expiring %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("warning") }}Expiring soon</h2><span class="muted small">findings return to the open queue on the expiry date</span></div>
+  <ul class="list">{% for d in expiring %}{% set left = (d.expires_on - today).days %}
+    <li><a class="row-link" href="/ui/triage/{{ d.id }}"><span class="row-main"><b>#{{ d.id }} · {{ d.reason|short(90) }}</b><small class="muted mono">@{{ d.owner_slug }} · approved by {{ d.decided_by }}</small></span>
+      <span class="tag-{{ 'crit' if left <= 7 else 'amber' }} mono">{{ 'today' if left <= 0 else left ~ 'd left' }} · {{ d.expires_on }}</span></a></li>
+  {% endfor %}</ul>
+</section>
+{% endif %}
+
+{% if suggestions %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("merge") }}Suggestions from DefectDojo</h2><span class="muted small">DefectDojo marks these; Kavlotryx keeps them open until a person decides</span></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Finding</th><th>Severity</th><th>DefectDojo says</th><th>Product</th><th></th></tr></thead>
+    <tbody>{% for x in suggestions %}
+    <tr><td><a class="mono strong plain" href="/ui/vulnerabilities/{{ x.f.id }}">{{ x.f.vuln_id or x.f.rule_key }}</a><br><small class="muted">{{ x.f.title|short(70) }}</small></td>
+      <td>{{ sev_badge(x.f.severity_id) }}</td><td>{{ kind_label[x.kind] }} <small class="muted mono">#{{ x.dd_id }}</small></td>
+      <td class="mono small">{{ x.product }}</td>
+      <td>{% if can_write %}<a class="btn btn-outline" href="/ui/vulnerabilities/{{ x.f.id }}?propose={{ x.kind }}&amp;dd={{ x.dd_id }}#triage">Review</a>{% endif %}</td></tr>
+    {% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("layers") }}All decisions</h2>
+    <nav class="tabs" aria-label="Decision state">
+      <a class="{{ 'on' if not state }}" href="/ui/triage{{ '?kind=' ~ kind if kind }}">All <b class="mono">{{ decisions|length }}</b></a>
+      {% for k, label in decision_states %}<a class="{{ 'on' if state == k }}" href="/ui/triage?state={{ k }}{{ '&kind=' ~ kind if kind }}">{{ label }} <b class="mono">{{ state_counts.get(k, 0) }}</b></a>{% endfor %}
+    </nav></div>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Decision</th><th>Kind</th><th>State</th><th>Reason</th><th class="num">Findings</th><th>Requested by</th><th>Decided by</th><th>Expires</th></tr></thead>
+    <tbody>{% for d in rows %}
+    <tr><td class="mono"><a class="t-amber strong" href="/ui/triage/{{ d.id }}">#{{ d.id }}</a><br><small class="muted">@{{ d.owner_slug }}</small></td>
+      <td class="small">{{ kind_label[d.kind] }}</td><td>{{ decision_badge(d) }}</td>
+      <td class="small">{{ d.reason|short(90) }}</td><td class="num mono">{{ counts.get(d.id, '—') }}</td>
+      <td class="small mono">{{ d.requested_by }}</td><td class="small mono">{{ d.decided_by or '—' }}</td>
+      <td class="small mono">{{ d.expires_on or '—' }}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}
+  <p class="empty-note">{{ icon("check") }}No decisions{{ ' in this state' if state }}. Open a finding or a work item to propose one.</p>
+  {% endif %}
+</section>
+{% endblock %}

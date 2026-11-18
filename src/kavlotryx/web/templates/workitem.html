@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, state_badge %}
+{% from "_parts.html" import status_tag, decision_badge, notes_card, triage_form with context %}
 {% block title %}{{ w.key }}{% endblock %}
 {% block content %}
 {% set left = (w.due_date - today).days if w.due_date else none %}
@@ -55,18 +56,18 @@
 
 <div class="split split-7-5">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("layers") }}Grouped findings <span class="pill">{{ open }} open · {{ fixed }} fixed</span></h2></div>
+    <div class="card-head"><h2>{{ icon("layers") }}Grouped findings <span class="pill">{{ open }} open · {{ fixed }} fixed{% if tri.triaged %} · {{ tri.triaged }} triaged{% endif %}</span></h2></div>
     <div class="tbl-wrap">
     <table class="tbl">
       <thead><tr><th>{{ 'Vulnerability' if w.kind.startswith('vuln') else 'Rule' }}</th><th>Severity</th><th>{{ 'Package' if w.kind.startswith('vuln') else 'Resource' }}</th><th>Owner rule</th><th>Status</th></tr></thead>
       <tbody>
       {% for m in members %}
-      <tr class="{{ 'row-dim' if m.status == 'fixed' }}">
+      <tr class="{{ 'row-dim' if m.status != 'open' }}">
         <td><a class="mono strong plain" href="/ui/vulnerabilities/{{ m.id }}">{{ m.vuln_id or m.rule_key }}</a><br><small class="muted">{{ m.title|short(70) }}</small></td>
         <td>{{ sev_badge(m.severity_id) }}</td>
         <td class="mono small">{% if m.kind == 'vuln' %}{{ m.package }} {{ m.installed_version }}<br><span class="t-ok">→ {{ m.fixed_version or 'no fix' }}</span>{% else %}<span class="trunc-block" title="{{ m.asset_key }}">{{ m.asset_name or m.asset_key }}</span>{% endif %}</td>
         <td class="mono small">{{ m.owner_rule }}<br><span class="muted">{{ "%.2f"|format(m.owner_confidence) }}</span></td>
-        <td>{% if m.status == 'fixed' %}<span class="tag-ok mono">fixed · scan #{{ m.fixed_by_scan_id }}</span>{% else %}<span class="tag-amber mono">open</span>{% endif %}</td>
+        <td>{{ status_tag(m) }}</td>
       </tr>
       {% endfor %}
       </tbody>
@@ -81,7 +82,7 @@
       <li class="tl tl-{{ t.tone }}"><span class="tl-dot">{{ icon("check" if t.tone == 'ok' else ("warning" if t.tone in ('warn', 'crit') else "clock")) }}</span>
         <div><b>{{ t.title }}</b><small class="muted"> {{ t.at|ago }}</small><p class="muted small">{{ t.text }}</p></div></li>
       {% endfor %}
-      {% if w.state not in ('verified', 'superseded') %}
+      {% if w.state not in ('verified', 'superseded', 'triaged') %}
       <li class="tl tl-pending"><span class="tl-dot">{{ icon("clock") }}</span>
         <div><b class="t-amber">Waiting for a clean scan</b><p class="muted small">Closes when a scan of the same scanner and scope no longer reports the {{ open }} open finding{{ 's' if open != 1 }}.</p></div></li>
       {% endif %}
@@ -95,13 +96,25 @@
     <ul class="list">
       {% for a in assets %}
       <li class="asset"><span class="row-main"><b class="mono t-amber trunc">{{ a.name or a.key }}</b><small class="mono muted trunc">{{ a.key }}</small></span>
-        <span class="mono small">{% if a.open %}<span class="tag-amber">{{ a.open }} open</span>{% endif %} {% if a.fixed %}<span class="tag-ok">{{ a.fixed }} fixed</span>{% endif %}</span></li>
+        <span class="mono small">{% if a.open %}<span class="tag-amber">{{ a.open }} open</span>{% endif %} {% if a.fixed %}<span class="tag-ok">{{ a.fixed }} fixed</span>{% endif %} {% if a.triaged %}<span class="tag-violet">{{ a.triaged }} triaged</span>{% endif %}</span></li>
       {% endfor %}
     </ul>
   </section>
   <section class="card">
     <div class="card-head"><h2>{{ icon("ticket") }}Ticket body</h2><button class="link" type="button" data-copy="#ticket-body">{{ icon("copy") }}Copy</button></div>
     <pre class="code" id="ticket-body">{{ body }}</pre>
+  </section>
+</div>
+<div class="split split-7-5">
+  {{ notes_card(tri.notes, "work_item", w.key) }}
+  <section class="card">
+    <div class="card-head"><h2>{{ icon("flag") }}Triage</h2></div>
+    {% if tri.live %}<p class="small">Decisions on these findings: {% for d in tri.live %}<a class="link strong" href="/ui/triage/{{ d.id }}">{{ kind_label[d.kind] }} #{{ d.id }}</a> {{ decision_badge(d) }}{{ ' ' }}{% endfor %}</p>{% endif %}
+    {% if can_write and tri.open_ids %}
+    <p class="muted small">Covers the {{ tri.open_ids|length }} open finding{{ 's' if tri.open_ids|length != 1 }} of this work item. Findings that appear later are not covered.</p>
+    {% call triage_form(tri.max_days, tri.min_date, tri.max_date, tri.default_date) %}<input type="hidden" name="work_item" value="{{ w.key }}">{% endcall %}
+    {% elif not tri.open_ids %}<p class="muted small">No open findings to triage.</p>
+    {% else %}<p class="muted small">Analysts and admins can propose a decision for every open finding here.</p>{% endif %}
   </section>
 </div>
 {% endblock %}

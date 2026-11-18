@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from kavlotryx.adapters import get_adapter
 from kavlotryx.core.fingerprint import fingerprint
+from kavlotryx.core.triage import TRIAGED, active_status
 from kavlotryx.db import Finding, FindingSource, Observation, Scan, audit, utcnow
 from kavlotryx.ocsf.extract import FindingFacts, extract_facts
 
@@ -118,6 +119,10 @@ def ingest(
             for fnd in session.scalars(select(Finding).where(Finding.fingerprint.in_(fps[i:i + 500]))):
                 existing[fnd.fingerprint] = fnd
 
+    # A finding that comes back while an active triage decision covers it
+    # returns to that decision's status, not to the open queue (FR-IF-06/07).
+    triaged = active_status(session, list(by_fp)) if by_fp else {}
+
     new = reopened = 0
     for fp, facts in by_fp.items():
         fnd = existing.get(fp)
@@ -133,7 +138,7 @@ def ingest(
                 if val not in ("", {}, None):
                     setattr(fnd, attr, val)
             if fnd.status == "fixed":
-                fnd.status = "open"
+                fnd.status = triaged.get(fp, "open")
                 fnd.fixed_at = None
                 fnd.fixed_by_scan_id = None
                 fnd.reopen_count += 1
@@ -179,7 +184,8 @@ def ingest(
                                            FindingSource.present.is_(True))
         )
         fnd = session.get(Finding, fid)
-        if still is None and fnd is not None and fnd.status == "open":
+        # Triaged findings are fixed by a clean scan too: the weakness is gone.
+        if still is None and fnd is not None and fnd.status in ("open", *TRIAGED):
             fnd.status = "fixed"
             fnd.fixed_at = now
             fnd.fixed_by_scan_id = scan.id

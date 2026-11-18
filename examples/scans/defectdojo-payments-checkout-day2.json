@@ -1,0 +1,594 @@
+{
+ "count": 8,
+ "next": null,
+ "previous": null,
+ "results": [
+  {
+   "id": 101,
+   "title": "CVE-2024-6345 setuptools",
+   "severity": "High",
+   "description": "CVE-2024-6345 setuptools (made-up demo data).",
+   "mitigation": "Upgrade to version 70.0.0",
+   "active": true,
+   "verified": true,
+   "false_p": false,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": false,
+   "file_path": "requirements.txt",
+   "line": null,
+   "component_name": "setuptools",
+   "component_version": "65.5.0",
+   "service": "",
+   "cwe": 0,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h101",
+   "vulnerability_ids": [
+    {
+     "vulnerability_id": "CVE-2024-6345"
+    }
+   ],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Trivy Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  },
+  {
+   "id": 102,
+   "title": "CVE-2023-45803 urllib3",
+   "severity": "Medium",
+   "description": "CVE-2023-45803 urllib3 (made-up demo data).",
+   "mitigation": "",
+   "active": false,
+   "verified": true,
+   "false_p": false,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": true,
+   "file_path": "requirements.txt",
+   "line": null,
+   "component_name": "urllib3",
+   "component_version": "1.26.5",
+   "service": "",
+   "cwe": 0,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h102",
+   "vulnerability_ids": [
+    {
+     "vulnerability_id": "CVE-2023-45803"
+    }
+   ],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Trivy Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   },
+   "fix_version": "1.26.18"
+  },
+  {
+   "id": 103,
+   "title": "CVE-2023-43804 urllib3",
+   "severity": "High",
+   "description": "CVE-2023-43804 urllib3 (made-up demo data).",
+   "mitigation": "Upgrade to version: 1.26.17",
+   "active": false,
+   "verified": true,
+   "false_p": false,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": true,
+   "file_path": "requirements.txt",
+   "line": null,
+   "component_name": "urllib3",
+   "component_version": "1.26.5",
+   "service": "",
+   "cwe": 0,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h103",
+   "vulnerability_ids": [
+    {
+     "vulnerability_id": "CVE-2023-43804"
+    }
+   ],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Trivy Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  },
+  {
+   "id": 104,
+   "title": "Formatted SQL query",
+   "severity": "Medium",
+   "description": "Formatted SQL query (made-up demo data).",
+   "mitigation": "",
+   "active": true,
+   "verified": true,
+   "false_p": false,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": false,
+   "file_path": "src/checkout/db.py",
+   "line": 42,
+   "component_name": "",
+   "component_version": "",
+   "service": "",
+   "cwe": 89,
+   "vuln_id_from_tool": "python.lang.security.audit.formatted-sql-query",
+   "unique_id_from_tool": "",
+   "hash_code": "h104",
+   "vulnerability_ids": [],
+   "tags": [
+    "team:data"
+   ],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Semgrep JSON Report"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  },
+  {
+   "id": 105,
+   "title": "Content Security Policy (CSP) Header Not Set",
+   "severity": "Low",
+   "description": "Content Security Policy (CSP) Header Not Set (made-up demo data).",
+   "mitigation": "",
+   "active": false,
+   "verified": true,
+   "false_p": true,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": false,
+   "file_path": "",
+   "line": null,
+   "component_name": "",
+   "component_version": "",
+   "service": "checkout-web",
+   "cwe": 693,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h105",
+   "vulnerability_ids": [],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "ZAP Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  },
+  {
+   "id": 106,
+   "title": "CVE-2022-40897 setuptools",
+   "severity": "Medium",
+   "description": "CVE-2022-40897 setuptools (made-up demo data).",
+   "mitigation": "Upgrade to version 65.5.1",
+   "active": false,
+   "verified": true,
+   "false_p": false,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": true,
+   "under_review": false,
+   "is_mitigated": false,
+   "file_path": "requirements.txt",
+   "line": null,
+   "component_name": "setuptools",
+   "component_version": "65.5.0",
+   "service": "",
+   "cwe": 0,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h106",
+   "vulnerability_ids": [
+    {
+     "vulnerability_id": "CVE-2022-40897"
+    }
+   ],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Trivy Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  },
+  {
+   "id": 107,
+   "title": "CVE-2021-33503 urllib3",
+   "severity": "High",
+   "description": "CVE-2021-33503 urllib3 (made-up demo data).",
+   "mitigation": "",
+   "active": false,
+   "verified": true,
+   "false_p": false,
+   "duplicate": false,
+   "duplicate_finding": null,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": true,
+   "file_path": "requirements.txt",
+   "line": null,
+   "component_name": "urllib3",
+   "component_version": "1.26.4",
+   "service": "",
+   "cwe": 0,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h107",
+   "vulnerability_ids": [
+    {
+     "vulnerability_id": "CVE-2021-33503"
+    }
+   ],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Trivy Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  },
+  {
+   "id": 108,
+   "title": "CVE-2024-6345 setuptools",
+   "severity": "High",
+   "description": "CVE-2024-6345 setuptools (made-up demo data).",
+   "mitigation": "",
+   "active": true,
+   "verified": true,
+   "false_p": false,
+   "duplicate": true,
+   "duplicate_finding": 101,
+   "out_of_scope": false,
+   "risk_accepted": false,
+   "under_review": false,
+   "is_mitigated": false,
+   "file_path": "requirements.txt",
+   "line": null,
+   "component_name": "setuptools",
+   "component_version": "65.5.0",
+   "service": "",
+   "cwe": 0,
+   "vuln_id_from_tool": "",
+   "unique_id_from_tool": "",
+   "hash_code": "h108",
+   "vulnerability_ids": [
+    {
+     "vulnerability_id": "CVE-2024-6345"
+    }
+   ],
+   "tags": [],
+   "date": "2026-11-10",
+   "test": 11,
+   "related_fields": {
+    "test": {
+     "id": 11,
+     "title": "Nightly",
+     "test_type": {
+      "id": 1,
+      "name": "Trivy Scan"
+     },
+     "engagement": {
+      "id": 7,
+      "name": "CI/CD payments-checkout",
+      "description": "",
+      "product": {
+       "id": 3,
+       "name": "payments-checkout",
+       "prod_type": {
+        "id": 2,
+        "name": "Payments"
+       }
+      },
+      "target_start": "2026-11-01",
+      "target_end": "2026-12-31",
+      "branch_tag": "main",
+      "engagement_type": "CI/CD",
+      "build_id": "",
+      "commit_hash": "",
+      "version": "",
+      "created": "2026-11-01T09:00:00Z",
+      "updated": "2026-11-16T09:00:00Z"
+     },
+     "environment": {
+      "id": 1,
+      "name": "Production"
+     },
+     "branch_tag": "main",
+     "build_id": "",
+     "commit_hash": "",
+     "version": ""
+    },
+    "jira": null
+   }
+  }
+ ]
+}

@@ -37,7 +37,7 @@
 <span class="badge sev sev-{{ sid }}">{% if sid >= 5 %}{{ icon("warning") }}{% endif %}{{ sid|sev|upper }}</span>
 {%- endmacro -%}
 {%- macro state_badge(state) -%}
-<span class="badge st st-{{ state }}">{{ {"open": "Open", "dispatched": "Dispatched", "pending_verification": "Pending verification", "verified": "Verified", "reopened": "Reopened", "superseded": "Superseded"}.get(state, state) }}</span>
+<span class="badge st st-{{ state }}">{{ {"open": "Open", "dispatched": "Dispatched", "pending_verification": "Pending verification", "verified": "Verified", "reopened": "Reopened", "superseded": "Superseded", "triaged": "Closed by triage"}.get(state, state) }}</span>
 {%- endmacro -%}
 {%- macro conf(f, limit=0.7) -%}
 <span class="conf {{ 'conf-review' if f.needs_review else 'conf-ok' }}">{{ icon("warning" if f.needs_review else "verified") }}{{ "%.2f"|format(f.owner_confidence) }} conf</span>
