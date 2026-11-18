@@ -7,7 +7,8 @@ Requirement ids (FR-IN-01, NFR-SEC-02, ...) tag each feature; cite them in code 
 
 - Tests: `.venv/bin/pytest` (SQLite). On PostgreSQL: `KAVLO_TEST_DATABASE_URL=postgresql+psycopg://... .venv/bin/pytest`
 - Lint: `.venv/bin/ruff check src tests`
-- Demo: `hack/demo.sh` (fake tracker, no Jira needed)
+- Demo: `hack/demo.sh` (fake tracker, no Jira needed); `hack/demo-samples.sh --serve 8187` adds a dev OIDC provider
+- Schema: Alembic in `src/kavlotryx/migrations`. A model change needs `kavlo db revision -m "..."`; `tests/test_migrations.py` fails until migrations match the models.
 
 ## Invariants (do not break)
 
@@ -18,4 +19,5 @@ Requirement ids (FR-IN-01, NFR-SEC-02, ...) tag each feature; cite them in code 
 - Every connector works with missing data (FR-EN-07): missing tags, files or repos are trace entries, not errors.
 - Credentials come from env only (NFR-SEC-02). Ticket text is ADF text nodes, never Jira markup (NFR-SEC-04). JQL input goes through `check_label`.
 - Every write goes to `audit_events`.
+- SSO (FR-IF-10): ID tokens are verified (JWKS signature, asymmetric algs only, iss, aud, exp, nonce); PKCE and state on every flow. Sessions read the user on every request. No user can change their own role or deactivate themself.
 - Triage (FR-IF-06..09): only an approved (`active`) decision changes a finding's status. Four eyes by default; a risk acceptance always expires. A scanner or DefectDojo flag is a suggestion, never a decision. Notes are append-only.

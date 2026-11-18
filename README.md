@@ -82,15 +82,15 @@ To file real Jira Cloud issues, set `KAVLO_JIRA_URL`, `KAVLO_JIRA_EMAIL` and `KA
 
 ### Web console
 
-`kavlo serve` also serves a console at `/ui`, signed in with the same API tokens (admin, analyst and viewer roles; ingest tokens are upload-only). It has five menus:
+`kavlo serve` also serves a console at `/ui`. People sign in with their organization account through OIDC single sign-on (see below), or with an API token (admin, analyst and viewer roles; ingest tokens are upload-only). It has five menus:
 
 - **Dashboard**: the pipeline status (stages, scanner freshness, connector syncs, tracker, owner review) and a dashboard per persona. *Vulnerability analyst*: severity and scanner mix, review queue, newest findings. *Engineering team lead*: only their team's work, by due date. *Cloud platform owner*: the fixes that remove the most findings, and the packages and rules that spread widest. *Security manager*: the success measures against their targets, SLA and age, progress by owner. *Change manager*: fixes on production-tagged resources. Each person's choice is remembered; `KAVLO_PERSONAS` sets defaults per token.
 - **Vulnerabilities**: every finding once, with filters for severity, status, kind, scanner, owner, owner rule, confidence, fix availability, production tags, work item state, ticket, age, account and artifact; facet counts; sorting; CSV export (formula-safe). A *Work items* tab holds the tickets, with a proof-of-closure timeline per item. The *Triage* and *Audit report* tabs are described below; findings and work items also take notes.
 - **Ownership**: owners, the rule ladder, the review queue, manual overrides, and the **Microsoft Graph** and **LeanIX** connectors with their mappings and a sync button. A *Leaders & engineers* tab maps open findings to people (see below).
 - **Scanners**: freshness per scanner and scope, scan history, upload and verifier decisions.
-- **Settings**: admins edit the remediation policy (confidence limit, due days, dispatch rules, production tags, stale-scan hours, the longest risk acceptance per severity, four eyes); changes are stored in the database and audited. Tracker, connector and token settings are shown as set or not set, never their values. The audit log is here too.
+- **Settings**: admins edit the remediation policy (confidence limit, due days, dispatch rules, production tags, stale-scan hours, the longest risk acceptance per severity, four eyes) and manage single sign-on users; changes are stored in the database and audited. Tracker, connector and token settings are shown as set or not set, never their values. The audit log is here too.
 
-It follows your system's light or dark setting ("Solar Phosphor" dark, "Light Terminal Mode" light), with a toggle. The console is server-rendered with no build step and loads nothing from third-party hosts, under a strict Content-Security-Policy. Sessions are signed cookies that hold a hash of the token, never the token itself, and every form carries a CSRF token. Set `KAVLO_SESSION_SECRET` so sessions survive restarts.
+It follows your system's light or dark setting ("Solar Phosphor" dark, "Light Terminal Mode" light), with a toggle. The console is server-rendered with no build step and loads nothing from third-party hosts, under a strict Content-Security-Policy. Sessions are signed cookies that hold a hash of the token or a user id, never a token or password, and every form carries a CSRF token. Set `KAVLO_SESSION_SECRET` so sessions survive restarts.
 
 To try it with sample data:
 
@@ -99,7 +99,7 @@ hack/demo-samples.sh --serve 8080   # Prowler, Trivy, Wiz and DefectDojo samples
 hack/serve-demo.sh 8080             # the small built-in example
 ```
 
-Tokens are written to `.kavlotryx/demo-tokens`: an admin, a viewer and an analyst (`riley`), so you can propose a triage decision as the analyst and approve it as the admin.
+Tokens are written to `.kavlotryx/demo-tokens`: an admin, a viewer and an analyst (`riley`), so you can propose a triage decision as the analyst and approve it as the admin. The sample demo also starts a development-only identity provider on the next port but one (`hack/dev_idp.py`, localhost only, no passwords): pick Avery or Dana (admins), Riley (analyst), Vic (viewer) or Sam (no access). Set `KAVLO_DEMO_SSO=0` to leave it out.
 
 ### Ownership connectors
 
@@ -129,6 +129,37 @@ The Microsoft Graph sync also reads the owners of each mapped Entra group and wa
 - Owners with no Entra people are listed as *reach nobody*, so the gap is visible.
 
 This view only reads. It never changes an owner: owner resolution still uses group membership alone.
+
+### Single sign-on and users
+
+The console signs people in with OpenID Connect: Microsoft Entra ID, Okta, Google, Keycloak, Auth0 or any other OIDC provider. Register Kavlotryx as a web app with the redirect URI `https://<your host>/ui/sso/callback`, then:
+
+```bash
+export KAVLO_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+export KAVLO_OIDC_CLIENT_ID=<application id>
+export KAVLO_OIDC_CLIENT_SECRET=<client secret>
+export KAVLO_OIDC_REDIRECT_URL=https://kavlotryx.example.com/ui/sso/callback
+export KAVLO_OIDC_ROLE_MAP="admin=<group id>,analyst=<group id>|<group id>,viewer=*"
+export KAVLO_OIDC_LABEL="Microsoft Entra ID"          # the button text
+export KAVLO_SESSION_SECRET=$(openssl rand -hex 32)   # sessions survive restarts and replicas
+```
+
+Kavlotryx uses the authorization-code flow with PKCE, `state` and `nonce`. It checks the ID token's signature against the provider's published keys (asymmetric algorithms only), plus its issuer, audience, expiry and nonce. A user is created at first sign-in. The role comes from the groups claim (`KAVLO_OIDC_GROUPS_CLAIM`, default `groups`; Entra ID sends group object ids, or set it to `roles` for app roles): the highest matching role wins, `*` matches everyone, and someone who matches nothing can't sign in. Admins see every user under Settings, where they can pin a role, hand it back to the groups claim, deactivate a user, or end all of a user's sessions. Those changes apply at once, because each request reads the user. Nobody can change their own user, so you can't lock yourself out by accident. `kavlo users list|set-role|use-groups|deactivate|activate` does the same from the CLI.
+
+API tokens keep working for the REST API and CI. On the console they're a break-glass sign-in; set `KAVLO_TOKEN_LOGIN=0` to hide that once SSO works. An install with SSO and no tokens is fine.
+
+### Database migrations
+
+The schema is managed with Alembic migrations that ship inside the package. On start, Kavlotryx brings the database to the latest revision. A database made before migrations existed is adopted: missing tables are created and it's stamped as the baseline, with no data lost. If several replicas share one database, set `KAVLO_AUTO_MIGRATE=0` and run the upgrade once per release:
+
+```bash
+kavlo db upgrade      # to the latest revision
+kavlo db current      # where the database is, and what the code needs
+kavlo db history
+kavlo db downgrade 0001
+```
+
+Contributors who change a model run `kavlo db revision -m "what changed"` and review the generated file. A test checks that the migrations build exactly the models, on SQLite and on PostgreSQL.
 
 ### DefectDojo as a source
 
@@ -170,7 +201,7 @@ kavlo serve --host 0.0.0.0 --port 8080
 curl -H "Authorization: Bearer $TOKEN" -F scanner=trivy -F file=@trivy.json http://localhost:8080/api/v1/scans
 ```
 
-OpenAPI is served at `/docs`. Roles: `admin`, `analyst`, `viewer`, `ingest` (upload only, for CI). Triage lives under `/api/v1/triage/decisions` (propose, then `approve`, `reject` or `revoke`), notes under `/api/v1/notes/{finding|work_item|decision}/{id}`, and the DefectDojo pull at `POST /api/v1/scans/defectdojo/pull` (admin).
+OpenAPI is served at `/docs`. Roles: `admin`, `analyst`, `viewer`, `ingest` (upload only, for CI). Admins manage single sign-on users at `/api/v1/users`. Triage lives under `/api/v1/triage/decisions` (propose, then `approve`, `reject` or `revoke`), notes under `/api/v1/notes/{finding|work_item|decision}/{id}`, and the DefectDojo pull at `POST /api/v1/scans/defectdojo/pull` (admin).
 
 ## Writing an adapter
 

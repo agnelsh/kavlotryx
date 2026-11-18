@@ -76,6 +76,18 @@ if [ "${1:-}" = "--serve" ]; then
   rm -f "$DIR/demo-tokens.bak"
   chmod 600 "$DIR/demo-tokens"
   export KAVLO_API_TOKENS="$(cat "$DIR/demo-tokens")"
-  echo "console: http://127.0.0.1:${2:-8080}/ui (tokens in $DIR/demo-tokens)"
-  exec "$KAVLO" serve --port "${2:-8080}"
+  PORT="${2:-8080}"
+  if [ "${KAVLO_DEMO_SSO:-1}" = "1" ]; then
+    # Single sign-on against a development-only identity provider on localhost (hack/dev_idp.py).
+    IDP_PORT=$((PORT + 2))
+    export KAVLO_OIDC_ISSUER="http://localhost:$IDP_PORT" KAVLO_OIDC_CLIENT_ID=kavlotryx-demo
+    export KAVLO_OIDC_CLIENT_SECRET="dev-only-secret" KAVLO_OIDC_LABEL="the dev identity provider"
+    export KAVLO_OIDC_REDIRECT_URL="http://localhost:$PORT/ui/sso/callback"
+    export KAVLO_OIDC_ROLE_MAP="admin=kavlotryx-admins,analyst=kavlotryx-analysts,viewer=all-staff"
+    "${PYTHON:-.venv/bin/python}" hack/dev_idp.py "$IDP_PORT" &
+    IDP_PID=$!
+    trap 'kill $IDP_PID 2>/dev/null' EXIT INT TERM
+  fi
+  echo "console: http://localhost:$PORT/ui (tokens in $DIR/demo-tokens; or sign in with the dev identity provider)"
+  "$KAVLO" serve --port "$PORT"
 fi

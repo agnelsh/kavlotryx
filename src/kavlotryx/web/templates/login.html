@@ -4,20 +4,30 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in · Kavlotryx</title>
 <link rel="icon" href="/ui/static/logo.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/ui/static/kavlo.css">
+<link rel="stylesheet" href="/ui/static/kavlo.css?v={{ version }}">
 </head>
 <body class="login-body">
 <main class="login">
   <img src="/ui/static/logo.svg" alt="" width="56" height="56">
   <h1>KAVLO<em>TRYX</em></h1>
-  <p class="muted">Sign in with an API token from <code>KAVLO_API_TOKENS</code>. Roles admin, analyst and viewer can use the console.</p>
   {% if error == "invalid" %}<div class="flash flash-error">That token is not valid.</div>{% endif %}
   {% if error == "role" %}<div class="flash flash-error">Ingest tokens can upload scans but cannot sign in.</div>{% endif %}
+  {% if error == "sso" %}<div class="flash flash-error">Single sign-on failed: {{ message }}</div>{% endif %}
+  {% if error == "denied" %}<div class="flash flash-error">You signed in, but you have no access: {{ message }}. Ask a Kavlotryx admin.</div>{% endif %}
+  {% if error == "expired" %}<div class="flash flash-error">The sign-in took too long or came from another browser. Try again.</div>{% endif %}
+  {% if sso %}
+  <p class="muted">Sign in with your organization account.</p>
+  <a class="btn btn-primary btn-block" href="/ui/sso/login?next={{ next|urlencode }}">Sign in with {{ sso_label }}</a>
+  {% endif %}
+  {% if token_login %}
+  {% if sso %}<p class="muted small login-or">or, for automation and break-glass access</p>{% else %}
+  <p class="muted">Sign in with an API token from <code>KAVLO_API_TOKENS</code>. Roles admin, analyst and viewer can use the console.</p>{% endif %}
   <form method="post" action="/ui/login">
     <input type="hidden" name="next" value="{{ next }}">
-    <label class="field"><span>API token</span><input type="password" name="token" autocomplete="current-password" required autofocus></label>
-    <button class="btn btn-primary btn-block">Sign in</button>
+    <label class="field"><span>API token</span><input type="password" name="token" autocomplete="current-password" required {{ '' if sso else 'autofocus' }}></label>
+    <button class="btn {{ 'btn-outline' if sso else 'btn-primary' }} btn-block">Sign in with a token</button>
   </form>
+  {% endif %}
 </main>
 </body>
 </html>

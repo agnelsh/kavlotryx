@@ -1,7 +1,7 @@
 """SQLAlchemy models. PostgreSQL in production (JSONB), SQLite for demos and tests.
 
-v0.1 creates tables with ``create_all``. Alembic migrations replace this
-before the first public release (NFR-OPS-02).
+The schema is managed by Alembic migrations in ``kavlotryx/migrations``
+(NFR-OPS-02). A model change needs a new revision: ``kavlo db revision -m "..."``.
 """
 
 from __future__ import annotations
@@ -224,6 +224,31 @@ class AuditEvent(Base):
     detail: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
+class User(Base):
+    """A person who signs in to the console through OIDC single sign-on (FR-IF-10).
+
+    Created on first sign-in. The role comes from the identity provider's
+    groups claim (``KAVLO_OIDC_ROLE_MAP``) unless an admin pins it
+    (``role_source = "manual"``). ``role = "none"`` signs nobody in.
+    Raising ``session_epoch`` ends every console session of this user.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("issuer", "subject"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issuer: Mapped[str] = mapped_column(String(512))
+    subject: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    name: Mapped[str] = mapped_column(String(256), default="")
+    role: Mapped[str] = mapped_column(String(16), default="none")  # admin | analyst | viewer | none
+    role_source: Mapped[str] = mapped_column(String(16), default="groups")  # groups | manual
+    groups: Mapped[list[str]] = mapped_column(JsonType, default=list)  # from the last sign-in
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    session_epoch: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class UserPref(Base):
     """Console preferences per signed-in principal (persona dashboard, team)."""
 
@@ -307,23 +332,11 @@ def make_engine(url: str) -> Engine:
     return engine
 
 
-# Tables that only cache connector data. When a release adds columns to one,
-# ``init_db`` drops and recreates it; the next connector sync fills it again.
-CACHE_TABLES = ("directory_people", "catalog_apps")
+def init_db(engine: Engine, auto_migrate: bool = True) -> None:
+    """Bring the schema to the latest Alembic revision (see ``kavlotryx.migrate``)."""
+    from kavlotryx.migrate import ensure
 
-
-def init_db(engine: Engine) -> None:
-    from sqlalchemy import inspect
-
-    insp = inspect(engine)
-    for name in CACHE_TABLES:
-        if not insp.has_table(name):
-            continue
-        have = {c["name"] for c in insp.get_columns(name)}
-        table = Base.metadata.tables[name]
-        if not {c.name for c in table.columns} <= have:
-            table.drop(engine)
-    Base.metadata.create_all(engine)
+    ensure(engine, auto=auto_migrate)
 
 
 def session_factory(engine: Engine) -> sessionmaker[Session]:

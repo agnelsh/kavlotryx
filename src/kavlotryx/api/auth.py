@@ -20,6 +20,7 @@ ADMIN = {"admin"}
 class Principal:
     name: str
     role: str
+    user_id: int | None = None  # set for a console user from single sign-on
 
 
 def _hash(token: str) -> str:

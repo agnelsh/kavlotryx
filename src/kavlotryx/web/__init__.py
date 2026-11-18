@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import secrets
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -18,11 +19,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response, Streamin
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from kavlotryx import OCSF_VERSION, __version__
+from kavlotryx import OCSF_VERSION, __version__, sso
 from kavlotryx.adapters import AdapterError, available_adapters
 from kavlotryx.api.auth import ADMIN, INGEST, READ, WRITE, Principal
 from kavlotryx.connectors import CONNECTORS, ConnectorError
-from kavlotryx.core import triage
+from kavlotryx.core import triage, users
 from kavlotryx.dispatch.base import TrackerError
 from kavlotryx.service import Kavlotryx, NotFound
 from kavlotryx.web import pages, session, triage_pages, views
@@ -138,17 +139,90 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
     def root():
         return RedirectResponse("/ui", status_code=307)
 
+    sso_on = sso.configured(settings)
+    token_login = settings.token_login or not sso_on
+    oidc_holder: dict[str, sso.OidcClient] = {}
+
+    def oidc() -> sso.OidcClient:
+        if "c" not in oidc_holder:
+            oidc_holder["c"] = sso.OidcClient(settings, transport=getattr(app.state, "oidc_transport", None))
+        return oidc_holder["c"]
+
+    def safe_next(v: str) -> str:
+        return v if v.startswith("/ui") and not v.startswith("/ui//") and "\\" not in v else "/ui"
+
+    def login_page(request: Request, next: str = "/ui", error: str = "", message: str = "", status: int = 200):
+        resp = templates.TemplateResponse(request, "login.html", {
+            "request": request, "next": safe_next(next), "error": error, "message": message[:300],
+            "sso": sso_on, "sso_label": settings.oidc_label, "token_login": token_login}, status_code=status)
+        resp.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self'; frame-ancestors 'none'"
+        return resp
+
     @app.get("/ui/login", include_in_schema=False)
     def login_form(request: Request, next: str = "/ui", error: str = ""):
         if request.app.state.tokens is None:
             return RedirectResponse("/ui", status_code=303)
-        resp = templates.TemplateResponse(request, "login.html", {
-            "request": request, "next": next if next.startswith("/ui") else "/ui", "error": error})
+        return login_page(request, next, error if error in ("invalid", "role", "expired") else "")
+
+    # -- single sign-on (FR-IF-10) ---------------------------------------------------
+
+    @app.get("/ui/sso/login", include_in_schema=False)
+    def sso_login(request: Request, next: str = "/ui"):
+        if not sso_on:
+            return RedirectResponse("/ui/login", status_code=303)
+        ls = sso.LoginState.new()
+        try:
+            url = oidc().authorize_url(ls)
+        except sso.OidcError as e:
+            return login_page(request, next, "sso", str(e), status=502)
+        resp = RedirectResponse(url, status_code=303)
+        session.issue_login_state(resp, request, ls, safe_next(next))
+        return resp
+
+    @app.get("/ui/sso/callback", include_in_schema=False)
+    def sso_callback(request: Request, code: str = "", state: str = "", error: str = "",
+                     error_description: str = ""):
+        if not sso_on:
+            return RedirectResponse("/ui/login", status_code=303)
+        pending = session.pop_login_state(request)
+        if pending is None or not state or not secrets.compare_digest(pending[0].state, state):
+            resp = login_page(request, "/ui", "expired", status=400)
+            session.clear_login_state(resp)
+            return resp
+        ls, nxt = pending
+        if error:
+            resp = login_page(request, nxt, "sso", f"the identity provider said {error[:60]}", status=400)
+            session.clear_login_state(resp)
+            return resp
+        client = oidc()
+        try:
+            claims = client.exchange(code, ls)
+        except sso.OidcError as e:
+            resp = login_page(request, nxt, "sso", str(e), status=400)
+            session.clear_login_state(resp)
+            return resp
+        groups = sso.groups_from(claims, settings.oidc_groups_claim)
+        with svc.session() as s:
+            try:
+                u = users.sign_in(s, str(claims["iss"]), claims, groups, sso.role_for(groups, client.role_map))
+            except users.AccessDenied as e:
+                resp = login_page(request, nxt, "denied", str(e), status=403)
+                session.clear_login_state(resp)
+                return resp
+            s.expunge(u)
+        # The provider redirected here cross-site, so a SameSite=Strict cookie set now
+        # would not travel with an HTTP redirect. A same-origin page navigation carries it.
+        resp = templates.TemplateResponse(request, "sso_done.html", {"request": request, "next": nxt})
         resp.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self'; frame-ancestors 'none'"
+        resp.headers["Cache-Control"] = "no-store"
+        session.issue(resp, request, user=u)
+        session.clear_login_state(resp)
         return resp
 
     @app.post("/ui/login", include_in_schema=False)
     def login(request: Request, token: str = Form(""), next: str = Form("/ui")):
+        if not token_login:
+            return RedirectResponse("/ui/login", status_code=303)
         tokens = request.app.state.tokens or {}
         h = session.token_hash(token.strip())
         p = tokens.get(h)
@@ -156,7 +230,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             return RedirectResponse("/ui/login?error=invalid", status_code=303)
         if p.role not in READ:
             return RedirectResponse("/ui/login?error=role", status_code=303)
-        resp = RedirectResponse(next if next.startswith("/ui") else "/ui", status_code=303)
+        resp = RedirectResponse(safe_next(next), status_code=303)
         session.issue(resp, request, h)
         return resp
 
@@ -488,9 +562,44 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
     @app.get("/ui/settings", include_in_schema=False)
     def settings_view(request: Request):
         who = session.current(request)
+        from sqlalchemy import select
+
+        from kavlotryx import migrate
+        from kavlotryx.db import User
+
         with svc.session() as s:
             data = pages.settings_page(s, settings, svc.policy, svc.ownership, request.app.state.tokens)
+            data["users"] = list(s.scalars(select(User).order_by(User.active.desc(), User.email)))
+        data["sso"] = {"on": sso_on, "issuer_host": urlsplit(settings.oidc_issuer).netloc,
+                       "groups_claim": settings.oidc_groups_claim}
+        data["schema_rev"] = migrate.current(svc.engine) or "none"
         return render(request, "settings.html", data, who)
+
+    @app.post("/ui/settings/users/{uid}", include_in_schema=False)
+    def settings_user(request: Request, uid: int, action: str = Form(...), role: str = Form(""),
+                      csrf: str = Form("")):
+        who = writer(request, csrf, ADMIN)
+        actor = f"ui:{who.name}"
+        with svc.session() as s:
+            try:
+                u = users.get(s, uid)
+                if action == "role":
+                    users.set_role(s, u, role, actor, who.user_id)
+                    msg = f"{users.display(u)} is now {role} (pinned)."
+                elif action == "groups":
+                    users.use_groups(s, u, actor, who.user_id)
+                    msg = f"{users.display(u)} takes the role from groups again at the next sign-in."
+                elif action in ("activate", "deactivate"):
+                    users.set_active(s, u, action == "activate", actor, who.user_id)
+                    msg = f"{users.display(u)} is {action}d."
+                elif action == "signout":
+                    users.sign_out_everywhere(s, u, actor)
+                    msg = f"Every session of {users.display(u)} is ended."
+                else:
+                    raise users.UserError("unknown action")
+            except users.UserError as e:
+                return session.redirect("/ui/settings#users", "error", f"Not changed: {e}")
+        return session.redirect("/ui/settings#users", "ok", msg)
 
     @app.post("/ui/settings/policy", include_in_schema=False)
     def settings_policy(request: Request, csrf: str = Form(""), confidence_limit: float = Form(...),

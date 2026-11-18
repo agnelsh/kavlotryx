@@ -570,3 +570,8 @@ fieldset[disabled] input, fieldset[disabled] select { opacity: .7; }
   .report a { color: #000 !important; text-decoration: none; }
   .tbl-wrap { overflow: visible !important; }
 }
+
+/* -- users and sign-in (FR-IF-10) ------------------------------------------- */
+.user-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.user-form select { min-width: 96px; }
+.login-or { text-align: center; margin: 4px 0 0; }

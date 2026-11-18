@@ -25,7 +25,7 @@ def h(token):
 
 
 def test_no_tokens_refuses_to_start(svc):
-    with pytest.raises(RuntimeError, match="no API tokens"):
+    with pytest.raises(RuntimeError, match="no sign-in configured"):
         create_app(svc)
 
 

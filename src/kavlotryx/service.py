@@ -43,7 +43,7 @@ class Kavlotryx:
     def __init__(self, settings: Settings, tracker: TicketTracker | None = None) -> None:
         self.settings = settings
         self.engine = make_engine(settings.database_url)
-        init_db(self.engine)
+        init_db(self.engine, auto_migrate=settings.auto_migrate)
         self.Session = session_factory(self.engine)
         self._tracker = tracker
 

@@ -94,6 +94,31 @@
   </section>
 </div>
 
+<section class="card" id="users">
+  <div class="card-head"><h2>{{ icon("users") }}Users <span class="pill mono">{{ users|length }}</span></h2>
+    <span class="mono small">{% if sso.on %}<span class="tag-ok">single sign-on on</span> {{ sso.issuer_host }}{% else %}<span class="tag-dim">single sign-on off</span>{% endif %} · migrations {{ schema_rev }}</span></div>
+  {% if users %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>User</th><th>Role</th><th>Groups</th><th>Last sign-in</th>{% if is_admin %}<th>Change</th>{% endif %}</tr></thead>
+    <tbody>{% for u in users %}{% set me = u.id == who.user_id %}
+    <tr class="{{ 'row-dim' if not u.active }}"><td><b>{{ u.name or u.email }}</b>{% if me %} <span class="tag-dim mono">you</span>{% endif %}<br><small class="muted mono">{{ u.email }}</small></td>
+      <td><span class="tag-{{ 'violet' if u.role == 'admin' else ('dim' if u.role == 'none' else 'ok') }} mono">{{ u.role }}</span><br><small class="muted mono">{{ 'pinned by an admin' if u.role_source == 'manual' else 'from groups' }}{{ ' · deactivated' if not u.active }}</small></td>
+      <td class="mono small">{{ u.groups|length }} group{{ 's' if u.groups|length != 1 }}</td>
+      <td class="mono small">{{ u.last_login_at|ago if u.last_login_at else 'never' }}</td>
+      {% if is_admin %}<td>{% if me %}<span class="muted small">another admin changes your user</span>{% else %}
+        <form class="user-form" method="post" action="/ui/settings/users/{{ u.id }}">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <select name="role" aria-label="Role for {{ u.email }}">{% for r in ["admin", "analyst", "viewer", "none"] %}<option {{ 'selected' if r == u.role }}>{{ r }}</option>{% endfor %}</select>
+          <button class="btn btn-outline" name="action" value="role">Pin role</button>
+          {% if u.role_source == 'manual' %}<button class="btn btn-ghost" name="action" value="groups">Use groups</button>{% endif %}
+          <button class="btn btn-ghost" name="action" value="{{ 'deactivate' if u.active else 'activate' }}">{{ 'Deactivate' if u.active else 'Activate' }}</button>
+          <button class="btn btn-ghost" name="action" value="signout">Sign out everywhere</button>
+        </form>{% endif %}</td>{% endif %}</tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}<p class="empty-note">{{ 'Nobody has signed in with single sign-on yet.' if sso.on else 'Set KAVLO_OIDC_ISSUER, KAVLO_OIDC_CLIENT_ID, KAVLO_OIDC_CLIENT_SECRET and KAVLO_OIDC_REDIRECT_URL to let people sign in with their organization account.' }}</p>{% endif %}
+  <p class="muted small">A user is created at first sign-in. The role comes from the identity provider's <code>{{ sso.groups_claim }}</code> claim through <code>KAVLO_OIDC_ROLE_MAP</code>; a pinned role wins until an admin sets "Use groups" again. Role changes apply at once; deactivating ends every session.</p>
+</section>
+
 <section class="card term-card">
   <div class="card-head"><span class="mono small"><i class="dot dot-crit"></i><i class="dot dot-amber"></i><i class="dot dot-ok"></i> audit_events</span><span class="t-ok mono small">append-only · latest {{ events|length }}</span></div>
   <div class="term mono small">

@@ -32,6 +32,10 @@ connectors_app = typer.Typer(help="Microsoft Graph and LeanIX ownership connecto
 triage_app = typer.Typer(help="Risk acceptance, false positives, notes and the audit report.",
                          no_args_is_help=True)
 pull_app = typer.Typer(help="Pull findings from another system.", no_args_is_help=True)
+db_app = typer.Typer(help="Database schema migrations (Alembic).", no_args_is_help=True)
+users_app = typer.Typer(help="Console users from single sign-on.", no_args_is_help=True)
+app.add_typer(db_app, name="db")
+app.add_typer(users_app, name="users")
 app.add_typer(triage_app, name="triage")
 app.add_typer(pull_app, name="pull")
 app.add_typer(owner_app, name="owner")
@@ -56,7 +60,13 @@ def main(config: ConfigOpt = None, db: DbOpt = None) -> None:
 
 
 def svc() -> Kavlotryx:
-    return Kavlotryx(_state.get("settings") or Settings.from_env())
+    from kavlotryx.migrate import SchemaOutdated
+
+    try:
+        return Kavlotryx(_state.get("settings") or Settings.from_env())
+    except SchemaOutdated as e:
+        fail(str(e))
+        raise  # pragma: no cover
 
 
 def actor() -> str:
@@ -466,3 +476,130 @@ def triage_report(
         console.print(f"wrote {out} ({rep['digest']})")
     else:
         console.print(text, markup=False, highlight=False)
+
+
+# -- database (NFR-OPS-02) -------------------------------------------------------------
+
+
+def _engine():
+    from kavlotryx.db import make_engine
+
+    return make_engine((_state.get("settings") or Settings.from_env()).database_url)
+
+
+@db_app.command("upgrade")
+def db_upgrade(revision: Annotated[str, typer.Argument(help="Target revision")] = "head") -> None:
+    """Migrate the schema to the latest (or a given) revision. A pre-migration database is adopted first."""
+    from kavlotryx import migrate
+
+    eng = _engine()
+    if revision == "head":
+        migrate.ensure(eng, auto=True)
+    else:
+        migrate.upgrade(eng, revision)
+    console.print(f"database at revision {migrate.current(eng)}")
+
+
+@db_app.command("downgrade")
+def db_downgrade(revision: str) -> None:
+    """Migrate the schema back to a revision. This can drop tables and their data."""
+    from kavlotryx import migrate
+
+    eng = _engine()
+    migrate.downgrade(eng, revision)
+    console.print(f"database at revision {migrate.current(eng)}")
+
+
+@db_app.command("current")
+def db_current() -> None:
+    """Show the database revision and the revision the code needs."""
+    from kavlotryx import migrate
+
+    cur, head = migrate.current(_engine()), migrate.head()
+    hint = "" if cur == head else " [yellow](run 'kavlo db upgrade')[/yellow]"
+    console.print(f"database {cur or 'none'}; code {head}{hint}")
+
+
+@db_app.command("history")
+def db_history() -> None:
+    """List the migrations."""
+    from kavlotryx import migrate
+
+    for rev, doc in migrate.history():
+        console.print(f"{rev}  {doc}")
+
+
+@db_app.command("revision")
+def db_revision(message: Annotated[str, typer.Option("-m", "--message")]) -> None:
+    """Write a new migration from the difference between the models and a database at head (for contributors)."""
+    from alembic import command
+    from sqlalchemy import create_engine
+
+    from kavlotryx import migrate
+
+    eng = create_engine("sqlite://")
+    migrate.upgrade(eng)
+    rev = f"{int(migrate.head()) + 1:04d}"
+    with eng.begin() as c:
+        command.revision(migrate.config(c), message=message, autogenerate=True, rev_id=rev)
+    console.print(f"wrote revision {rev}; review it, then rename the file to {rev}_<topic>.py")
+
+
+# -- users (FR-IF-10) ----------------------------------------------------------------------
+
+
+def _user_action(key: str, fn) -> None:
+    from kavlotryx.core import users as us
+
+    with svc().session() as s:
+        try:
+            u = us.find(s, key)
+            fn(s, u)
+        except us.UserError as e:
+            fail(str(e))
+        console.print(f"{us.display(u)}: role {u.role} ({u.role_source}), {'active' if u.active else 'deactivated'}")
+
+
+@users_app.command("list")
+def users_list() -> None:
+    """List console users."""
+    from kavlotryx.db import User
+
+    t = Table("id", "email", "name", "role", "from", "active", "last sign-in")
+    with svc().session() as s:
+        for u in s.scalars(select(User).order_by(User.email)):
+            t.add_row(str(u.id), u.email, u.name, u.role, u.role_source, "yes" if u.active else "no",
+                      str(u.last_login_at or "never"))
+    console.print(t)
+
+
+@users_app.command("set-role")
+def users_set_role(user: Annotated[str, typer.Argument(help="Email or id")], role: str) -> None:
+    """Pin a role (admin, analyst, viewer, none). The user must have signed in once."""
+    from kavlotryx.core import users as us
+
+    _user_action(user, lambda s, u: us.set_role(s, u, role, actor()))
+
+
+@users_app.command("use-groups")
+def users_use_groups(user: Annotated[str, typer.Argument(help="Email or id")]) -> None:
+    """Take the role from the identity provider's groups again, at the next sign-in."""
+    from kavlotryx.core import users as us
+
+    _user_action(user, lambda s, u: us.use_groups(s, u, actor()))
+
+
+@users_app.command("deactivate")
+def users_deactivate(user: Annotated[str, typer.Argument(help="Email or id")]) -> None:
+    """Block sign-in and end every session."""
+    from kavlotryx.core import users as us
+
+    _user_action(user, lambda s, u: us.set_active(s, u, False, actor()))
+
+
+@users_app.command("activate")
+def users_activate(user: Annotated[str, typer.Argument(help="Email or id")]) -> None:
+    """Allow sign-in again."""
+    from kavlotryx.core import users as us
+
+    _user_action(user, lambda s, u: us.set_active(s, u, True, actor()))

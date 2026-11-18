@@ -27,10 +27,14 @@ PG_URL = os.environ.get("KAVLO_TEST_DATABASE_URL", "")
 def settings(tmp_path: Path) -> Settings:
     url = PG_URL or f"sqlite:///{tmp_path / 'k.db'}"
     if PG_URL:
+        from sqlalchemy import text
+
         from kavlotryx.db import Base, make_engine
 
         engine = make_engine(PG_URL)
         Base.metadata.drop_all(engine)
+        with engine.begin() as c:
+            c.execute(text("DROP TABLE IF EXISTS alembic_version"))
         engine.dispose()
     return Settings(database_url=url, config_dir=CONFIG,
                     tracker="fake", fake_tracker_file=tmp_path / "tracker.json")

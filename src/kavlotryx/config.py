@@ -157,6 +157,17 @@ class Settings:
     defectdojo_url: str = ""  # e.g. https://defectdojo.example.com
     defectdojo_token: str = field(default="", repr=False)
     defectdojo_products: str = ""  # comma-separated product names; empty = every product
+    auto_migrate: bool = True  # KAVLO_AUTO_MIGRATE=0: never change the schema at start
+    # OIDC single sign-on for the console (FR-IF-10)
+    oidc_issuer: str = ""  # e.g. https://login.microsoftonline.com/<tenant>/v2.0
+    oidc_client_id: str = ""
+    oidc_client_secret: str = field(default="", repr=False)
+    oidc_redirect_url: str = ""  # e.g. https://kavlotryx.example.com/ui/sso/callback
+    oidc_scopes: str = "openid email profile"
+    oidc_groups_claim: str = "groups"
+    oidc_role_map: str = ""  # "admin=<group>,analyst=<group>,viewer=*"
+    oidc_label: str = "single sign-on"  # button text, e.g. "Microsoft Entra ID"
+    token_login: bool = True  # KAVLO_TOKEN_LOGIN=0 hides the API-token sign-in on the console
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -183,6 +194,16 @@ class Settings:
             defectdojo_url=e("KAVLO_DEFECTDOJO_URL", ""),
             defectdojo_token=e("KAVLO_DEFECTDOJO_TOKEN", ""),
             defectdojo_products=e("KAVLO_DEFECTDOJO_PRODUCTS", ""),
+            auto_migrate=e("KAVLO_AUTO_MIGRATE", "1") != "0",
+            oidc_issuer=e("KAVLO_OIDC_ISSUER", ""),
+            oidc_client_id=e("KAVLO_OIDC_CLIENT_ID", ""),
+            oidc_client_secret=e("KAVLO_OIDC_CLIENT_SECRET", ""),
+            oidc_redirect_url=e("KAVLO_OIDC_REDIRECT_URL", ""),
+            oidc_scopes=e("KAVLO_OIDC_SCOPES", cls.oidc_scopes),
+            oidc_groups_claim=e("KAVLO_OIDC_GROUPS_CLAIM", cls.oidc_groups_claim),
+            oidc_role_map=e("KAVLO_OIDC_ROLE_MAP", ""),
+            oidc_label=e("KAVLO_OIDC_LABEL", cls.oidc_label),
+            token_login=e("KAVLO_TOKEN_LOGIN", "1") != "0",
         )
 
     def default_personas(self) -> dict[str, str]:

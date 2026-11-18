@@ -36,6 +36,12 @@ class NoteIn(BaseModel):
     body: str
 
 
+class UserIn(BaseModel):
+    role: str | None = None  # pins the role
+    use_groups: bool = False  # take the role from groups again at the next sign-in
+    active: bool | None = None
+
+
 class OwnerOverrideIn(BaseModel):
     owner: str
     match: str = "asset"  # "asset" | "finding"
@@ -83,10 +89,15 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
     app = FastAPI(title="Kavlotryx", version=__version__,
                   description="Turn security scanner findings into owned, tracked, scan-verified work.")
     tokens = parse_tokens(settings.api_tokens)
-    if not tokens and not insecure_no_auth:
-        raise RuntimeError("no API tokens configured: set KAVLO_API_TOKENS "
+    from kavlotryx.sso import configured as sso_configured
+    from kavlotryx.sso import parse_role_map
+
+    sso_on = sso_configured(settings)
+    parse_role_map(settings.oidc_role_map)  # fail at start on a bad map, not at the first sign-in
+    if not tokens and not sso_on and not insecure_no_auth:
+        raise RuntimeError("no sign-in configured: set KAVLO_API_TOKENS or KAVLO_OIDC_*, "
                            "or pass --insecure-no-auth for local use")
-    app.state.tokens = None if (insecure_no_auth and not tokens) else tokens
+    app.state.tokens = None if (insecure_no_auth and not tokens and not sso_on) else tokens
     app.state.svc = svc
     max_bytes = settings.max_upload_mb * 1024 * 1024
 
@@ -305,6 +316,33 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
             return svc.triage_report(start, end, who.name, owner)
         except tr.TriageError as e:
             raise _triage_err(e) from e
+
+    # -- users (FR-IF-10) ---------------------------------------------------------------
+
+    @app.get("/api/v1/users", tags=["admin"])
+    def list_users(_: Principal = Depends(require(ADMIN))):
+        from kavlotryx.core import users as us
+        from kavlotryx.db import User
+
+        with svc.session() as s:
+            return [us.as_dict(u) for u in s.scalars(select(User).order_by(User.email))]
+
+    @app.patch("/api/v1/users/{user_id}", tags=["admin"])
+    def patch_user(user_id: int, body: UserIn, who: Principal = Depends(require(ADMIN))):
+        from kavlotryx.core import users as us
+
+        with svc.session() as s:
+            try:
+                u = us.get(s, user_id)
+                if body.role is not None:
+                    us.set_role(s, u, body.role, who.name, who.user_id)
+                if body.use_groups:
+                    us.use_groups(s, u, who.name, who.user_id)
+                if body.active is not None:
+                    us.set_active(s, u, body.active, who.name, who.user_id)
+            except us.UserError as e:
+                raise HTTPException(404 if "not found" in str(e) else 422, str(e)) from e
+            return us.as_dict(u)
 
     @app.get("/api/v1/people", tags=["ownership"])
     def people_view(_: Principal = Depends(require(READ))):
