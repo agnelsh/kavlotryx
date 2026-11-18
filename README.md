@@ -115,6 +115,10 @@ hack/serve-demo.sh 8080             # the small built-in example
 
 The demo writes three tokens to `.kavlotryx/demo-tokens`: an admin, a viewer and an analyst (`riley`). Propose a triage decision as the analyst, then approve it as the admin. The sample demo also starts a development-only identity provider two ports up (`hack/dev_idp.py`; localhost only, no passwords). Pick Avery or Dana (admins), Riley (analyst), Vic (viewer) or Sam (no access). Set `KAVLO_DEMO_SSO=0` to leave it out.
 
+### Public demo
+
+`KAVLO_DEMO_MODE=1` turns the console into a public, read-only demo: anonymous visitors browse every page as a viewer, every change is blocked, a banner explains it, and the REST API stays closed. Behind a proxy, set `KAVLO_PUBLIC_URL` to the address people use. `deploy/Dockerfile.demo` builds an image with the sample data already seeded, and [deploy/cloudflare](deploy/cloudflare/README.md) deploys it to Cloudflare Containers.
+
 ### Ownership connectors
 
 Two connectors add identity and application context. A sync copies what ownership needs into local tables, and owner resolution reads only those tables, so a rebuild never calls an external API.

@@ -30,6 +30,16 @@ COOKIE = "kavlo_session"
 FLASH = "kavlo_flash"
 TTL_SECONDS = 8 * 3600
 ANON = Principal("local", "admin")
+VISITOR = Principal("visitor", "viewer")  # anonymous visitor of a public demo (KAVLO_DEMO_MODE=1)
+
+
+def public_host(request: Request) -> str:
+    """The host people use when Kavlotryx runs behind a proxy (KAVLO_PUBLIC_URL), or ''."""
+    return urlsplit(getattr(request.app.state, "public_url", "") or "").netloc
+
+
+def allowed_hosts(request: Request) -> set[str]:
+    return {h for h in (request.headers.get("host", ""), public_host(request)) if h}
 
 
 class LoginRequired(Exception):
@@ -59,7 +69,9 @@ def _sign(payload: str) -> str:
 
 
 def _secure(request: Request) -> bool:
-    return request.url.scheme == "https" or os.environ.get("KAVLO_COOKIE_SECURE") == "1"
+    public = getattr(request.app.state, "public_url", "") or ""
+    return (request.url.scheme == "https" or public.startswith("https://")
+            or os.environ.get("KAVLO_COOKIE_SECURE") == "1")
 
 
 def issue(response: Response, request: Request, token_hash: str = "", user=None) -> None:
@@ -112,6 +124,8 @@ def current(request: Request) -> Principal:
         p = _user_principal(request, ident)
     elif ident:
         p = tokens.get(ident.removeprefix("t-"))
+    if p is None and getattr(request.app.state, "demo", False):
+        return VISITOR
     if p is None or p.role not in READ:
         raise LoginRequired()
     return p
@@ -126,7 +140,7 @@ def check_csrf(request: Request, submitted: str | None) -> None:
     if not submitted or not hmac.compare_digest(csrf_token(request), submitted):
         raise CsrfError()
     origin = request.headers.get("origin")
-    if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
+    if origin and urlsplit(origin).netloc not in allowed_hosts(request):
         raise CsrfError()
 
 

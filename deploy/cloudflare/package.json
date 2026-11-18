@@ -1,0 +1,18 @@
+{
+	"name": "kavlotryx-demo",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"types": "wrangler types",
+		"check": "wrangler types && tsc -p tsconfig.json"
+	},
+	"devDependencies": {
+		"typescript": "^5.9.0",
+		"wrangler": "^4.136.0"
+	},
+	"engines": {
+		"node": ">=22.12"
+	}
+}

@@ -94,10 +94,14 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
 
     sso_on = sso_configured(settings)
     parse_role_map(settings.oidc_role_map)  # fail at start on a bad map, not at the first sign-in
-    if not tokens and not sso_on and not insecure_no_auth:
+    if not tokens and not sso_on and not insecure_no_auth and not settings.demo_mode:
         raise RuntimeError("no sign-in configured: set KAVLO_API_TOKENS or KAVLO_OIDC_*, "
                            "or pass --insecure-no-auth for local use")
+    if insecure_no_auth and settings.demo_mode:
+        raise RuntimeError("--insecure-no-auth would make every demo visitor an admin; drop it in demo mode")
     app.state.tokens = None if (insecure_no_auth and not tokens and not sso_on) else tokens
+    app.state.demo = settings.demo_mode
+    app.state.public_url = settings.public_url
     app.state.svc = svc
     max_bytes = settings.max_upload_mb * 1024 * 1024
 

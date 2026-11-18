@@ -8,3 +8,10 @@ __pycache__/
 dist/
 build/
 examples/samples/defectdojo/
+
+# Cloudflare demo deploy
+deploy/cloudflare/node_modules/
+deploy/cloudflare/.wrangler/
+deploy/cloudflare/.dev.vars
+deploy/cloudflare/dist/
+deploy/cloudflare/worker-configuration.d.ts

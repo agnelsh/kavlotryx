@@ -97,6 +97,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             "metrics": summary["metrics"], "dialect": dialect, "tracker": tracker_label,
             "can_write": who.role in WRITE, "can_ingest": who.role in INGEST, "is_admin": who.role in ADMIN,
             "auth_off": request.app.state.tokens is None, "path": request.url.path,
+            "demo": settings.demo_mode, "visitor": who is session.VISITOR,
         }
         resp = templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status)
         resp.headers["Content-Security-Policy"] = CSP
@@ -119,7 +120,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
     def back(request: Request, fallback: str) -> str:
         ref = request.headers.get("referer", "")
         parts = urlsplit(ref)
-        if parts.netloc == request.headers.get("host") and parts.path.startswith("/ui"):
+        if parts.netloc in session.allowed_hosts(request) and parts.path.startswith("/ui"):
             return parts.path + (f"?{parts.query}" if parts.query else "")
         return fallback
 
@@ -266,6 +267,8 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             return session.redirect("/ui", "error", "Unknown persona.")
         if team and team not in {o.slug for o in svc.ownership.owners}:
             return session.redirect("/ui", "error", "Unknown team.")
+        if who is session.VISITOR:  # demo visitors share one name: never store their choice
+            return session.redirect(f"/ui?persona={persona}" if persona else "/ui")
         svc.set_pref(who.name, persona=persona or None, team=team or None)
         return session.redirect("/ui")
 
@@ -536,7 +539,8 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
         who = session.current(request)
         with svc.session() as s:
             data = pages.scanners(s, svc.policy, _adapters())
-        return render(request, "scanners.html", {**data, "base_url": str(request.base_url).rstrip("/"),
+        base_url = settings.public_url or str(request.base_url).rstrip("/")
+        return render(request, "scanners.html", {**data, "base_url": base_url,
                                                  "stale_hours": svc.policy.scan_stale_hours}, who)
 
     @app.post("/ui/scans", include_in_schema=False)

@@ -1,0 +1,12 @@
+# Keep local state, secrets and downloads out of every Docker build context.
+.git
+.venv
+.kavlotryx
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.db
+examples/samples/defectdojo
+deploy/cloudflare/node_modules
+deploy/cloudflare/.wrangler
+deploy/cloudflare/.dev.vars

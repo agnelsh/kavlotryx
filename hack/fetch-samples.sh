@@ -9,18 +9,19 @@ SHA=bb64f7aa1c2f722d88f02cfd3f4b5bb015ee3e43   # django-DefectDojo master, 2026-
 BASE="https://raw.githubusercontent.com/DefectDojo/django-DefectDojo/$SHA/unittests/scans"
 OUT=examples/samples/defectdojo
 SUMS="$PWD/examples/samples/SHA256SUMS"
+sha256() { if command -v shasum >/dev/null; then shasum -a 256 "$@"; else sha256sum "$@"; fi; }
 mkdir -p "$OUT"
 cd "$OUT"
 while read -r sum path; do
   [ -z "$path" ] && continue
-  if [ -f "$path" ] && echo "$sum  $path" | shasum -a 256 -c --status; then
+  if [ -f "$path" ] && echo "$sum  $path" | sha256 -c --status; then
     continue
   fi
   mkdir -p "$(dirname "$path")"
   curl -sSfL --proto '=https' -o "$path.tmp" "$BASE/$path"
   mv "$path.tmp" "$path"
 done < "$SUMS"
-shasum -a 256 -c "$SUMS" --quiet
+sha256 -c "$SUMS" --quiet
 cat > NOTICE.md <<NOTE
 These files come from the DefectDojo project test suite, commit $SHA:
 https://github.com/DefectDojo/django-DefectDojo/tree/$SHA/unittests/scans

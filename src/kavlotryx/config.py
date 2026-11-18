@@ -168,6 +168,9 @@ class Settings:
     oidc_role_map: str = ""  # "admin=<group>,analyst=<group>,viewer=*"
     oidc_label: str = "single sign-on"  # button text, e.g. "Microsoft Entra ID"
     token_login: bool = True  # KAVLO_TOKEN_LOGIN=0 hides the API-token sign-in on the console
+    # Public demo: anonymous visitors browse the console as viewers; nothing can be changed.
+    demo_mode: bool = False
+    public_url: str = ""  # the address people use, e.g. https://demo.example.com (behind a proxy)
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -204,6 +207,8 @@ class Settings:
             oidc_role_map=e("KAVLO_OIDC_ROLE_MAP", ""),
             oidc_label=e("KAVLO_OIDC_LABEL", cls.oidc_label),
             token_login=e("KAVLO_TOKEN_LOGIN", "1") != "0",
+            demo_mode=e("KAVLO_DEMO_MODE", "0") == "1",
+            public_url=e("KAVLO_PUBLIC_URL", "").rstrip("/"),
         )
 
     def default_personas(self) -> dict[str, str]:
