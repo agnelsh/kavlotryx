@@ -1,10 +1,13 @@
 # Owners and ownership rules. Rules run in this order; the first match wins:
 #   1 manual override (kavlo owner set)     confidence 1.0
 #   2 resource tag (tag_keys)               0.9
-#   3 GitHub CODEOWNERS                     0.85
-#   4 pattern rules                         0.75
-#   5 account / registry default            0.5  (below the 0.7 limit: needs review)
-#   6 fallback_owner                        0.0
+#   3 Microsoft Graph person in a tag       0.8  (connectors.graph)
+#   4 GitHub CODEOWNERS                     0.85
+#   5 LeanIX application                    0.8  (connectors.leanix)
+#   6 ServiceNow CMDB configuration item    0.8  (connectors.servicenow)
+#   7 pattern rules                         0.75
+#   8 account / registry default            0.5  (below the 0.7 limit: needs review)
+#     fallback_owner                        0.0
 owners:
   - slug: payments
     name: Payments
@@ -18,6 +21,17 @@ owners:
     aliases: [data-eng]
 
 tag_keys: [owner, team]
+
+# ServiceNow CMDB (KAVLO_SERVICENOW_INSTANCE + credentials, or KAVLO_SERVICENOW_SNAPSHOT).
+# An asset matches a CI by resource id (object_id, correlation_id, serial number, FQDN, IP),
+# by a ci tag, or by a unique CI name. The CI's support group names the team.
+connectors:
+  servicenow:
+    table: cmdb_ci
+    query: operational_status=1
+    group_map:
+      Payments Engineering: payments
+      Cloud Operations: platform
 
 codeowners:
   - repo: github.com/acme/payments-api

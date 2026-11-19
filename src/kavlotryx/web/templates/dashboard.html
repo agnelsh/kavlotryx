@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, state_badge, mode_badge %}
-{% from "_parts.html" import finding_list, item_table %}
+{% from "_parts.html" import finding_list, item_table, intel_badges with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 {% set plabel = (personas|selectattr(0, "equalto", persona)|first) %}
@@ -28,7 +28,7 @@
 </nav>
 
 <section class="card">
-  <div class="card-head"><h2>{{ icon("layers") }}Pipeline status</h2><span class="muted mono small">{% if pipe.last_scan %}last scan {{ pipe.last_scan|ago }}{% else %}no scans yet{% endif %}</span></div>
+  <div class="card-head"><h2>{{ icon("layers") }}Pipeline Status</h2><span class="muted mono small">{% if pipe.last_scan %}last scan {{ pipe.last_scan|ago }}{% else %}no scans yet{% endif %}</span></div>
   <ol class="stages">
     {% for name, n, note in pipe.stages %}<li class="stage"><span class="stage-n mono">{{ n }}</span><b>{{ name }}</b><small>{{ note }}</small></li>{% endfor %}
   </ol>
@@ -51,7 +51,7 @@
 {% if persona == "analyst" %}
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("warning") }}Open findings by severity</h2><a class="link" href="/ui/vulnerabilities">All findings {{ icon("arrow") }}</a></div>
+    <div class="card-head"><h2>{{ icon("warning") }}Open Findings by Severity</h2><a class="link" href="/ui/vulnerabilities">All findings {{ icon("arrow") }}</a></div>
     <ul class="bars">
       {% for name, n, sid in d.severity %}
       <li><a class="bar-label" href="/ui/vulnerabilities?sev={{ sid }}">{{ name }}</a><span class="bar"><i class="bar-fill {{ 'tone-crit' if sid >= 5 else ('tone-warn' if sid == 4 else 'tone-orange') }}" data-w="{{ 100 * n / d.sev_max }}"></i></span><span class="mono bar-n">{{ n }}</span></li>
@@ -59,7 +59,7 @@
     </ul>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("merge") }}Open findings by scanner</h2><span class="tag-ok mono">{{ d.merged }} reported by 2+ scanners</span></div>
+    <div class="card-head"><h2>{{ icon("merge") }}Open Findings by Scanner</h2><span class="tag-ok mono">{{ d.merged }} reported by 2+ scanners</span></div>
     <ul class="bars">
       {% for name, n in d.scanners %}
       <li><a class="bar-label mono" href="/ui/vulnerabilities?scanner={{ name }}">{{ name }}</a><span class="bar"><i class="bar-fill tone-violet" data-w="{{ 100 * n / d.scanner_max }}"></i></span><span class="mono bar-n">{{ n }}</span></li>
@@ -67,13 +67,24 @@
     </ul>
   </section>
 </div>
+<section class="card">
+  <div class="card-head"><h2>{{ icon("warning") }}Exploited or Likely to Be Exploited</h2><a class="link" href="/ui/vulnerabilities?intel=kev">{{ d.exploited_total }} open · CISA KEV {{ icon("arrow") }}</a></div>
+  {% if d.exploited %}
+  <ul class="list">
+    {% for f in d.exploited %}
+    <li><a class="row-link" href="/ui/vulnerabilities/{{ f.id }}"><span class="row-main"><span><b class="mono">{{ f.vuln_id }}</b>{{ intel_badges(d.threats.get(f.vuln_id)) }} <span class="small">{{ f.package }} {{ f.installed_version }}</span></span>
+      <small class="mono muted">@{{ f.owner_slug }} · {{ (f.asset_name or f.artifact or f.asset_key)|short(50) }}</small></span>{{ sev_badge(f.severity_id) }}</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="empty-note">{{ icon("check") }}No open CVE is in the CISA KEV catalog or above the EPSS threshold{{ ' (no threat data synced yet)' if not d.threats }}.</p>{% endif %}
+</section>
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("flag") }}Owner review queue</h2><a class="link" href="/ui/vulnerabilities?conf=review">Open queue {{ icon("arrow") }}</a></div>
+    <div class="card-head"><h2>{{ icon("flag") }}Owner Review Queue</h2><a class="link" href="/ui/vulnerabilities?conf=review">Open queue {{ icon("arrow") }}</a></div>
     {{ finding_list(d.review_rows, "Every open finding has a confident owner.") }}
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("clock") }}Newest findings</h2><a class="link" href="/ui/vulnerabilities?sort=first">By first seen {{ icon("arrow") }}</a></div>
+    <div class="card-head"><h2>{{ icon("clock") }}Newest Findings</h2><a class="link" href="/ui/vulnerabilities?sort=first">By first seen {{ icon("arrow") }}</a></div>
     {{ finding_list(d.newest, "No open findings.") }}
   </section>
 </div>
@@ -95,12 +106,12 @@
   <div class="kpi kpi-ok"><span class="kpi-label">Verified, last 30 days</span><b class="kpi-value t-ok">{{ d.verified_30 }}</b><span class="kpi-note">closed by a clean scan</span></div>
 </section>
 <section class="card">
-  <div class="card-head"><h2>{{ icon("ticket") }}My team's work, by due date</h2></div>
+  <div class="card-head"><h2>{{ icon("ticket") }}My Team's Work, by Due Date</h2></div>
   {{ item_table(d.mine, d.open_counts, d.today, "Nothing open for this team.") }}
 </section>
 {% if d.team_review %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("flag") }}Assigned to us with low confidence</h2><span class="muted small">confirm or reassign</span></div>
+  <div class="card-head"><h2>{{ icon("flag") }}Assigned to Us with Low Confidence</h2><span class="muted small">confirm or reassign</span></div>
   {{ finding_list(d.team_review, "") }}
 </section>
 {% endif %}
@@ -108,7 +119,7 @@
 {# ---------------- platform owner ---------------- #}
 {% elif persona == "platform" %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("tree") }}Fixes that remove the most findings</h2><span class="muted small">one change each</span></div>
+  <div class="card-head"><h2>{{ icon("tree") }}Fixes That Remove the Most Findings</h2><span class="muted small">one change each</span></div>
   <ul class="bars bars-wide">
     {% for w in d.top_items %}
     <li><a class="bar-label" href="/ui/workitems/{{ w.key }}" title="{{ w.title }}">{{ w.title }} <small class="muted mono">@{{ w.owner_slug }}</small></a><span class="bar"><i class="bar-fill tone-ok" data-w="{{ 100 * d.open_counts.get(w.key, 0) / d.top_max }}"></i></span><span class="mono bar-n">{{ d.open_counts.get(w.key, 0) }}</span></li>
@@ -117,13 +128,13 @@
 </section>
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("layers") }}Packages in the most artifacts</h2></div>
+    <div class="card-head"><h2>{{ icon("layers") }}Packages in the Most Artifacts</h2></div>
     <table class="tbl"><thead><tr><th>Package</th><th class="num">Artifacts</th></tr></thead><tbody>
       {% for p, n in d.packages %}<tr><td class="mono"><a class="plain" href="/ui/vulnerabilities?q={{ p|urlencode }}&kind=vuln">{{ p }}</a></td><td class="num mono">{{ n }}</td></tr>{% else %}<tr><td colspan="2" class="muted">No open vulnerabilities.</td></tr>{% endfor %}
     </tbody></table>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("tree") }}Configuration rules on the most resources</h2></div>
+    <div class="card-head"><h2>{{ icon("tree") }}Configuration Rules on the Most Resources</h2></div>
     <table class="tbl"><thead><tr><th>Rule</th><th class="num">Resources</th></tr></thead><tbody>
       {% for key, title, n in d.rules %}<tr><td><a class="plain" href="/ui/vulnerabilities?q={{ key|urlencode }}&kind=config">{{ title|short(70) }}</a><br><small class="mono muted">{{ key|short(60) }}</small></td><td class="num mono">{{ n }}</td></tr>{% else %}<tr><td colspan="2" class="muted">No open misconfigurations.</td></tr>{% endfor %}
     </tbody></table>
@@ -133,7 +144,7 @@
 {# ---------------- security manager ---------------- #}
 {% elif persona == "security_manager" %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("verified") }}Success measures against targets</h2><span class="muted small">from live data</span></div>
+  <div class="card-head"><h2>{{ icon("verified") }}Success Measures Against Targets</h2><span class="muted small">from live data</span></div>
   <div class="targets">
     {% for name, value, target, ok in d.targets %}
     <div class="target {{ 'target-ok' if ok else ('target-miss' if value != '—' else '') }}"><span class="kpi-label">{{ name }}</span><b class="mono">{{ value }}</b><small class="muted">target {{ target }}</small></div>
@@ -142,13 +153,13 @@
 </section>
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("clock") }}Age of active work items</h2></div>
+    <div class="card-head"><h2>{{ icon("clock") }}Age of Active Work Items</h2></div>
     <ul class="bars">
       {% for name, n in d.ages %}<li><span class="bar-label">{{ name }}</span><span class="bar"><i class="bar-fill {{ 'tone-crit' if loop.last else ('tone-warn' if loop.index == 3 else 'tone-ok') }}" data-w="{{ 100 * n / d.age_max }}"></i></span><span class="mono bar-n">{{ n }}</span></li>{% endfor %}
     </ul>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("users") }}Progress by owner</h2></div>
+    <div class="card-head"><h2>{{ icon("users") }}Progress by Owner</h2></div>
     <table class="tbl"><thead><tr><th>Owner</th><th class="num">Active</th><th class="num">Overdue</th><th class="num">Review</th><th class="num">Verified</th></tr></thead><tbody>
       {% for slug, row in d.by_owner|dictsort %}<tr><td><a class="owner-tag" href="/ui/workitems?owner={{ slug }}">@{{ slug }}</a></td><td class="num mono">{{ row.open_items }}</td><td class="num mono {{ 't-crit' if row.overdue }}">{{ row.overdue }}</td><td class="num mono {{ 't-amber' if row.needs_review }}">{{ row.needs_review }}</td><td class="num mono t-ok">{{ d.verified.get(slug, 0) }}</td></tr>
       {% else %}<tr><td colspan="5" class="muted">No work items yet.</td></tr>{% endfor %}
@@ -156,7 +167,7 @@
   </section>
 </div>
 <section class="card">
-  <div class="card-head"><h2>{{ icon("warning") }}Overdue work items</h2></div>
+  <div class="card-head"><h2>{{ icon("warning") }}Overdue Work Items</h2></div>
   {{ item_table(d.overdue_items, d.open_counts, d.today, "Nothing is overdue.") }}
 </section>
 
@@ -167,11 +178,11 @@
   <p class="muted small">Fixes on resources tagged as production (<code>{{ d.prod_keys }}</code>) need change approval. ServiceNow change requests arrive in v0.2; until then these are the work items to schedule through your change process.</p>
 </section>
 <section class="card">
-  <div class="card-head"><h2>{{ icon("warning") }}Fixes that touch production</h2><span class="pill">{{ d.prod_items|length }}</span></div>
+  <div class="card-head"><h2>{{ icon("warning") }}Fixes That Touch Production</h2><span class="pill">{{ d.prod_items|length }}</span></div>
   {{ item_table(d.prod_items, d.open_counts, d.today, "No active work items touch production-tagged resources.") }}
 </section>
 <section class="card">
-  <div class="card-head"><h2>{{ icon("ticket") }}Other urgent tickets</h2><span class="muted small">Critical and High, already dispatched</span></div>
+  <div class="card-head"><h2>{{ icon("ticket") }}Other Urgent Tickets</h2><span class="muted small">Critical and High, already dispatched</span></div>
   {{ item_table(d.urgent, d.open_counts, d.today, "None.") }}
 </section>
 {% endif %}

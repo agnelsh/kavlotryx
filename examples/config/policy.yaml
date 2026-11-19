@@ -5,3 +5,11 @@ dispatch_min_priority: Low
 dispatch_without_fix: false
 production_tag_keys: [env, environment]
 production_values: [prod, production]
+# Priority from exploit signals and business context. A CVE in the CISA KEV
+# catalog sets at least this priority ("" turns it off). An EPSS score at or above
+# the threshold raises the priority one level (0 turns it off). A ServiceNow CI
+# whose environment is a production value, or whose criticality is listed here,
+# counts like a production tag.
+kev_min_priority: Critical
+epss_threshold: 0.1
+business_critical_values: ["1 - most critical"]

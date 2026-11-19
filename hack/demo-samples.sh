@@ -14,6 +14,10 @@ export KAVLO_CONFIG_DIR=examples/samples/config KAVLO_DATABASE_URL="sqlite:///$D
 export KAVLO_TRACKER=fake KAVLO_FAKE_TRACKER_FILE="$DIR/samples-tracker.json"
 export KAVLO_GRAPH_SNAPSHOT=examples/samples/config/graph-snapshot.json
 export KAVLO_LEANIX_SNAPSHOT=examples/samples/config/leanix-snapshot.json
+export KAVLO_SERVICENOW_SNAPSHOT=examples/samples/config/servicenow-snapshot.json
+# Threat intelligence: CISA KEV and FIRST EPSS entries for the sample CVEs, copied from the public feeds
+export KAVLO_KEV_SNAPSHOT=examples/samples/config/kev-snapshot.json
+export KAVLO_EPSS_SNAPSHOT=examples/samples/config/epss-snapshot.json
 export KAVLO_PERSONAS="${KAVLO_PERSONAS:-demo=security_manager,viewer=team_lead}"
 ACCOUNT=prowler:aws:123456789012   # pass the scope: an empty scan cannot reveal it
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -33,7 +37,7 @@ $KAVLO ingest examples/scans/defectdojo-payments-checkout.json --scanner defectd
 step "Prowler upgraded to 4.5 and run again: the new output format adds no duplicates"
 $KAVLO ingest $S/aws_prowler_v3plus/many_vuln_after_4_5_0.ocsf.json --scanner prowler --scope $ACCOUNT
 
-step "Sync ownership connectors (Microsoft Graph and LeanIX snapshots)"
+step "Sync connectors: Microsoft Graph, LeanIX and ServiceNow CMDB snapshots; CISA KEV and EPSS"
 $KAVLO connectors sync all --no-rebuild
 
 step "Owners, groups and tickets"

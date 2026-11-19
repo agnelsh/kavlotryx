@@ -18,13 +18,15 @@ from sqlalchemy.orm import Session
 
 from kavlotryx.config import OwnershipConfig, PolicyConfig
 from kavlotryx.core import codeowners
-from kavlotryx.db import CatalogApp, DirectoryPerson, Finding, OwnerOverride
+from kavlotryx.core.intel import CmdbIndex
+from kavlotryx.db import CatalogApp, CmdbCi, DirectoryPerson, Finding, OwnerOverride
 
 CONF_OVERRIDE = 1.0
 CONF_TAG = 0.9
 CONF_DIRECTORY = 0.8
 CONF_CODEOWNERS = 0.85
 CONF_CATALOG = 0.8
+CONF_CMDB = 0.8
 CONF_PATTERN = 0.75
 CONF_DEFAULT = 0.5
 CONF_FALLBACK = 0.0
@@ -68,6 +70,7 @@ class OwnershipResolver:
         overrides: list[OwnerOverride] | None = None,
         people: list[DirectoryPerson] | None = None,
         apps: list[CatalogApp] | None = None,
+        cis: list[CmdbCi] | None = None,
     ) -> None:
         self.cfg = cfg
         self.policy = policy
@@ -101,6 +104,9 @@ class OwnershipResolver:
         self.app_repos = {r: a for a in apps or [] for r in a.repos if r}
         self.team_map = {k.lower(): v for k, v in cfg.connectors.leanix.team_map.items()}
         self.has_people, self.has_apps = bool(people), bool(apps)
+        # ServiceNow CMDB cache: an asset matched to a CI gets the CI's support group.
+        self.cmdb = CmdbIndex(cis or [], cfg.connectors.servicenow)
+        self.group_owner = {k.lower(): v for k, v in cfg.connectors.servicenow.group_map.items()}
 
     # -- helpers --------------------------------------------------------------
 
@@ -135,6 +141,7 @@ class OwnershipResolver:
             or self._directory(f, trace)
             or self._codeowners(f, trace)
             or self._catalog(f, trace)
+            or self._servicenow(f, trace)
             or self._patterns(f, trace)
             or self._defaults(f, trace)
         )
@@ -257,6 +264,33 @@ class OwnershipResolver:
                                                 "responsible person"))
         return None
 
+    def _servicenow(self, f: Finding, trace: list[RuleTrace]) -> Assignment | None:
+        m = self.cmdb.match(f)
+        if m.ci is None:
+            trace.append(RuleTrace("servicenow", False, m.how))
+            return None
+        ci = m.ci
+        ev: dict[str, Any] = {"ci": ci.name, "sys_id": ci.sys_id, "class": ci.class_name, "matched_by": m.how}
+        for field_name, group in (("support_group", ci.support_group), ("managed_by_group", ci.managed_by_group)):
+            if not group:
+                continue
+            owner = self.group_owner.get(group.lower()) or self._owner_from_value(group)
+            if owner in self.known:
+                trace.append(RuleTrace("servicenow", True, f"{m.how} → CI {ci.name} → {field_name} {group}"))
+                return Assignment(owner, f"servicenow:{field_name}", "servicenow", CONF_CMDB,
+                                  {**ev, field_name: group})
+        if ci.owned_by:
+            person = self.people.get(ci.owned_by)
+            team = self._person_team(person) if person else None
+            if team:
+                trace.append(RuleTrace("servicenow", True, f"{m.how} → CI {ci.name} → owned by {ci.owned_by} "
+                                                           f"→ group {team[1]}"))
+                return Assignment(team[0], "servicenow:owned_by", "servicenow+graph", CONF_CMDB,
+                                  {**ev, "owned_by": ci.owned_by, "group": team[1]})
+        groups = ", ".join(g for g in (ci.support_group, ci.managed_by_group) if g) or "no group"
+        trace.append(RuleTrace("servicenow", False, f"CI {ci.name} ({m.how}) has {groups}, mapped to no owner"))
+        return None
+
     def _codeowners(self, f: Finding, trace: list[RuleTrace]) -> Assignment | None:
         repo, how = self._repo_for(f)
         if not repo:
@@ -326,4 +360,5 @@ def resolver_for(session: Session, cfg: OwnershipConfig, policy: PolicyConfig, c
     return OwnershipResolver(cfg, policy, config_dir,
                              overrides=list(session.scalars(select(OwnerOverride))),
                              people=list(session.scalars(select(DirectoryPerson))),
-                             apps=list(session.scalars(select(CatalogApp))))
+                             apps=list(session.scalars(select(CatalogApp))),
+                             cis=list(session.scalars(select(CmdbCi))))

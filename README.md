@@ -7,9 +7,9 @@ Scanners are good at finding problems and bad at getting them fixed. Every tool 
 1. **Ingest** Prowler, Trivy and Wiz output (Issues and vulnerability CSV exports, wizcli JSON), DefectDojo findings (API v2), or any OCSF finding.
 2. **Normalize** everything to [OCSF](https://schema.ocsf.io/): Vulnerability, Compliance and Detection Findings.
 3. **Deduplicate** with a stable fingerprint, across scanners and scan runs.
-4. **Enrich** with cloud tags, GitHub CODEOWNERS and an image-to-repo map.
+4. **Enrich** with cloud tags, GitHub CODEOWNERS, an image-to-repo map, Microsoft Graph, LeanIX and the ServiceNow CMDB, plus exploit signals from the CISA KEV catalog and FIRST EPSS.
 5. **Resolve the owner** with ordered rules. Every assignment keeps its evidence and a confidence score, and weak ones go to a review queue.
-6. **Group** the findings that one change removes: one ticket for "upgrade openssl in payments-api", not twelve.
+6. **Group** the findings that one change removes: one ticket for "upgrade openssl in payments-api", not twelve. Each group gets a priority from its worst severity, the business context of the asset and the exploit signals, with the reasons written down.
 7. **Dispatch** one Jira issue per group. Running it again never creates a duplicate.
 8. **Verify** before closing: a work item closes only when a later scan stops reporting its findings, and it reopens if they come back.
 9. **Triage** what you won't fix. False positives and risk acceptances need a written reason and a second approver, and acceptances expire. The audit report turns all of it into a register with control checks and a SHA-256 digest.
@@ -55,8 +55,9 @@ The rules run in this order, and the first match wins:
 | 3 | Microsoft Graph: a tag names a person, and their Entra group names the team | 0.8 |
 | 4 | GitHub CODEOWNERS for the file or Dockerfile | 0.85 |
 | 5 | LeanIX: the asset belongs to an application, and its team owns it | 0.8 |
-| 6 | Pattern rule in `ownership.yaml` (asset, name, rule or resource type) | 0.75 |
-| 7 | Cloud account or registry default | 0.5 (needs review) |
+| 6 | ServiceNow CMDB: the asset is a configuration item, and its support group owns it | 0.8 |
+| 7 | Pattern rule in `ownership.yaml` (asset, name, rule or resource type) | 0.75 |
+| 8 | Cloud account or registry default | 0.5 (needs review) |
 | — | Fallback owner | 0.0 |
 
 ## Using it
@@ -85,21 +86,21 @@ To file real Jira Cloud issues, set `KAVLO_JIRA_URL`, `KAVLO_JIRA_EMAIL` and `KA
 `kavlo serve` also serves a console at `/ui`. People sign in with their organization account through OIDC single sign-on (see below), or with an API token (admin, analyst and viewer roles; ingest tokens can only upload). It has five menus:
 
 - **Dashboard**: pipeline status (stages, scanner freshness, connector syncs, tracker, owner review) and a dashboard for each persona.
-  - *Vulnerability analyst*: severity and scanner mix, the review queue, the newest findings.
+  - *Vulnerability analyst*: severity and scanner mix, what is exploited or likely to be exploited, the review queue, the newest findings.
   - *Engineering team lead*: only their team's work, by due date.
   - *Cloud platform owner*: the fixes that remove the most findings, and the packages and rules that spread widest.
   - *Security manager*: success measures against their targets, SLA and age, progress by owner.
-  - *Change manager*: fixes on production-tagged resources.
+  - *Change manager*: fixes on production resources, by tag or by ServiceNow CI.
 
   The console remembers each person's choice, and `KAVLO_PERSONAS` sets a default per token.
-- **Vulnerabilities**: every finding once, with filters for severity, status, kind, scanner, owner, owner rule, confidence, fix availability, production tags, work item state, ticket, age, account and artifact. It has facet counts, sorting and a formula-safe CSV export. The *Work items* tab holds the tickets, each with a proof-of-closure timeline. The *Triage* and *Audit report* tabs are covered below. Findings and work items also take notes.
-- **Ownership**: owners, the rule ladder, the review queue, manual overrides, and the Microsoft Graph and LeanIX connectors with their mappings and a sync button. The *Leaders & engineers* tab maps open findings to people (see below).
+- **Vulnerabilities**: every finding once, with filters for severity, status, kind, scanner, owner, owner rule, confidence, fix availability, production tags, exploit signal (CISA KEV or EPSS), work item state, ticket, age, account and artifact. It has facet counts, sorting and a formula-safe CSV export. The *Work items* tab holds the tickets, each with a proof-of-closure timeline. The *Triage* and *Audit report* tabs are covered below. Findings and work items also take notes.
+- **Ownership**: owners, the rule ladder, the review queue, manual overrides, the Microsoft Graph, LeanIX and ServiceNow connectors with their mappings and a sync button, and the threat intelligence status. The *Leaders & engineers* tab maps open findings to people (see below).
 - **Scanners**: freshness per scanner and scope, scan history, uploads and verifier decisions.
 - **Settings**, in five tabs:
   - *IAM*: single sign-on settings, the group-to-role map and API tokens.
   - *User Management*: single sign-on users.
-  - *Policy*: confidence limit, due days, dispatch rules, production tags, stale-scan hours, the longest risk acceptance per severity, and four eyes. Changes are stored in the database and audited.
-  - *Connectors*: Jira, DefectDojo, Microsoft Graph and LeanIX.
+  - *Policy*: confidence limit, due days, dispatch rules, production tags, stale-scan hours, the longest risk acceptance per severity, four eyes, and the KEV, EPSS and business-criticality priority rules. Changes are stored in the database and audited.
+  - *Connectors*: Jira, DefectDojo, Microsoft Graph, LeanIX, ServiceNow, CISA KEV and FIRST EPSS.
   - *Configuration*: config files, the database schema revision and the audit log.
 
   Credentials show as set or not set, never their values.
@@ -109,7 +110,8 @@ The console follows your system's light or dark setting, with a toggle. It's ser
 To try it with sample data:
 
 ```bash
-hack/demo-samples.sh --serve 8080   # Prowler, Trivy, Wiz and DefectDojo samples, Graph and LeanIX snapshots, triage
+hack/demo-samples.sh --serve 8080   # Prowler, Trivy, Wiz and DefectDojo samples, Graph, LeanIX and ServiceNow
+                                    # snapshots, KEV and EPSS data, triage
 hack/serve-demo.sh 8080             # the small built-in example
 ```
 
@@ -121,21 +123,24 @@ The demo writes three tokens to `.kavlotryx/demo-tokens`: an admin, a viewer and
 
 ### Ownership connectors
 
-Two connectors add identity and application context. A sync copies what ownership needs into local tables, and owner resolution reads only those tables, so a rebuild never calls an external API.
+Three connectors add identity, application and asset context. A sync copies what ownership needs into local tables, and owner resolution reads only those tables, so a rebuild never calls an external API.
 
 | Connector | What it resolves | Live mode | Rule |
 |---|---|---|---|
 | Microsoft Graph | A tag that names a person (`Owner=jd@acme.com`) → their Entra ID groups → a team via `connectors.graph.group_map` | `KAVLO_GRAPH_TENANT_ID`, `KAVLO_GRAPH_CLIENT_ID`, `KAVLO_GRAPH_CLIENT_SECRET`; app permissions `GroupMember.Read.All`, plus `User.Read.All` for managers | 3, confidence 0.80 |
 | LeanIX | An asset's app tag, image or resource name, or repository → an Application fact sheet → its team (`connectors.leanix.team_map`), or its responsible person through Graph | `KAVLO_LEANIX_HOST`, `KAVLO_LEANIX_TOKEN` (API token with read access) | 5, confidence 0.80 |
+| ServiceNow CMDB | An asset's resource id (the CI's `object_id`, `correlation_id`, serial number, FQDN or IP), a CI tag, or a unique CI name → a configuration item → its support group, then its managed-by group (`connectors.servicenow.group_map`), then its owner through Graph | `KAVLO_SERVICENOW_INSTANCE`, plus `KAVLO_SERVICENOW_USER` and `KAVLO_SERVICENOW_PASSWORD` or an OAuth `KAVLO_SERVICENOW_TOKEN`; read access to the CI table (for example the `cmdb_read` role) | 6, confidence 0.80 |
 
-Each connector can also read a JSON snapshot (`KAVLO_GRAPH_SNAPSHOT`, `KAVLO_LEANIX_SNAPSHOT`), which is handy for demos and air-gapped installs. See `examples/samples/config/`.
+Each connector can also read a JSON snapshot (`KAVLO_GRAPH_SNAPSHOT`, `KAVLO_LEANIX_SNAPSHOT`, `KAVLO_SERVICENOW_SNAPSHOT`), which is handy for demos and air-gapped installs. See `examples/samples/config/`.
+
+The ServiceNow connector reads one table through the Table API with GET requests only: `cmdb_ci` by default, or a class such as `cmdb_ci_vm_instance`, filtered by an encoded query (`operational_status=1` by default). Cloud discovery stores the provider's resource id in `object_id`, so an Azure VM or an AWS instance in a scan matches its CI directly. A name that belongs to more than one CI is never used. Besides the owner, the CI brings business context: its environment and criticality feed the priority (see below). Criticality and environment field names differ between CI classes, so both are configurable.
 
 ```bash
-kavlo connectors sync all     # or graph / leanix; re-resolves owners afterwards
+kavlo connectors sync all     # or graph / leanix / servicenow / kev / epss; re-resolves owners afterwards
 kavlo connectors status
 ```
 
-These clients are tested against mocked HTTP only. They haven't run against a live tenant or LeanIX workspace yet.
+These clients are tested against mocked HTTP only. They haven't run against a live tenant, LeanIX workspace or ServiceNow instance yet.
 
 #### Leaders and engineers
 
@@ -147,6 +152,27 @@ The Microsoft Graph sync also reads the owners of each mapped Entra group and wa
 - Owners with no people in Entra show up as *reach nobody*, so the gap is visible.
 
 This view only reads. It never changes an owner; owner resolution still uses group membership alone.
+
+### Priority from business context and exploit signals
+
+A severity score says how bad a weakness could be, not how likely it is to be used against you or how much the asset matters. Kavlotryx starts each work item at the highest severity among its findings and then adjusts it:
+
+| Signal | Source | Effect (default) |
+|---|---|---|
+| Production or business-critical asset | a production tag (`production_tag_keys`, `production_values`), or a ServiceNow CI whose environment is a production value or whose criticality is in `business_critical_values` | one level up |
+| Likely to be exploited | [FIRST EPSS](https://www.first.org/epss/) score at or above `epss_threshold` (0.1) | one level up |
+| Known to be exploited | listed in the [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | at least `kev_min_priority` (Critical) |
+
+Every step that changed the priority is stored with the work item, shown on its page under *Why Critical* (or High, and so on), and written into the ticket. A new ticket gets its due date from the final priority. All three rules live in `policy.yaml` and the console's Policy tab, and each one can be turned off.
+
+Both feeds are public and need no credentials. Because they call the Internet, live downloads are opt-in with `KAVLO_THREAT_INTEL_LIVE=1`. Otherwise point `KAVLO_KEV_SNAPSHOT` at a copy of the KEV JSON feed and `KAVLO_EPSS_SNAPSHOT` at an EPSS API response or the daily EPSS CSV (`.gz` works too). The KEV sync stores the whole catalog; the EPSS sync asks only for the CVEs that have findings, 100 per request. Both feeds change every day, so schedule the syncs:
+
+```bash
+kavlo connectors sync kev
+kavlo connectors sync epss
+```
+
+A daily EPSS change updates the reasons on the work item but does not rewrite the ticket, unless the priority itself changes.
 
 ### Single sign-on and users
 
@@ -225,7 +251,7 @@ kavlo serve --host 0.0.0.0 --port 8080
 curl -H "Authorization: Bearer $TOKEN" -F scanner=trivy -F file=@trivy.json http://localhost:8080/api/v1/scans
 ```
 
-OpenAPI is served at `/docs`. The roles are `admin`, `analyst`, `viewer` and `ingest` (upload only, for CI). Admins manage single sign-on users at `/api/v1/users`. Triage lives under `/api/v1/triage/decisions` (propose, then `approve`, `reject` or `revoke`), notes under `/api/v1/notes/{finding|work_item|decision}/{id}`, and the DefectDojo pull at `POST /api/v1/scans/defectdojo/pull` (admin only).
+OpenAPI is served at `/docs`. `GET /api/v1/findings` takes `kev=true` and `min_epss=0.5` filters and returns each CVE's KEV and EPSS data; a single finding also returns its ServiceNow CI, and work items carry `priority_reasons`. The roles are `admin`, `analyst`, `viewer` and `ingest` (upload only, for CI). Admins manage single sign-on users at `/api/v1/users`. Triage lives under `/api/v1/triage/decisions` (propose, then `approve`, `reject` or `revoke`), notes under `/api/v1/notes/{finding|work_item|decision}/{id}`, and the DefectDojo pull at `POST /api/v1/scans/defectdojo/pull` (admin only).
 
 ## Writing an adapter
 

@@ -118,7 +118,7 @@ def console(sample_owned):  # noqa: F811
 def test_people_page_empty_until_graph_sync(console):
     _, c = console
     html = c.get("/ui/ownership/people").text
-    assert "No people synced yet" in html and "Leaders &amp; engineers" in html
+    assert "No People Synced Yet" in html and "Leaders &amp; engineers" in html
 
 
 def test_people_page_and_person_drilldown(console):
@@ -134,7 +134,7 @@ def test_people_page_and_person_drilldown(console):
     assert "Senior Software Engineer" in page and "Publicly exposed VM on port 22" in page
     assert "Priya Nair" in page and "Avery Brooks" in page  # manager chain breadcrumb
     vp = c.get("/ui/ownership/people/11111111-0000-4000-8000-000000000009").text
-    assert "Roll-up" in vp and "Direct reports" in vp and "Publicly exposed VM on port 22" in vp
+    assert "Roll-up" in vp and "Direct Reports" in vp and "Publicly exposed VM on port 22" in vp
 
     listing = c.get(f"/ui/vulnerabilities?person={jd}").text
     assert "person: Jordan Diaz" in listing and "Publicly exposed VM" in listing

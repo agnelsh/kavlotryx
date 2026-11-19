@@ -98,6 +98,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             "can_write": who.role in WRITE, "can_ingest": who.role in INGEST, "is_admin": who.role in ADMIN,
             "auth_off": request.app.state.tokens is None, "path": request.url.path,
             "demo": settings.demo_mode, "visitor": who is session.VISITOR,
+            "epss_threshold": svc.policy.epss_threshold,
         }
         resp = templates.TemplateResponse(request, name, {**base, **ctx}, status_code=status)
         resp.headers["Content-Security-Policy"] = CSP
@@ -276,22 +277,23 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
 
     def _filter(q: str, sev: list[int], kind: str, status: str, scanner: str, owner: str, rule: str, conf: str,
                 account: str, artifact: str, fix: str, prod: str, wi_state: str, ticket: str, age: int, sort: str,
-                dir: str, page: int, size: int, person: str = "") -> pages.VulnFilter:
+                dir: str, page: int, size: int, person: str = "", intel: str = "") -> pages.VulnFilter:
         return pages.VulnFilter(q=q[:200], sev=[x for x in sev if 0 <= x <= 6], kind=kind, status=status,
                                 scanner=scanner, owner=owner, rule=rule, conf=conf, account=account,
                                 artifact=artifact[:200], fix=fix, prod=prod, wi_state=wi_state, ticket=ticket,
                                 age=max(0, age), person=person[:128], sort=sort if sort in pages.SORTS else "sev",
-                                dir="asc" if dir == "asc" else "desc", page=page, size=size)
+                                dir="asc" if dir == "asc" else "desc", page=page, size=size,
+                                intel=intel if intel in ("kev", "epss") else "")
 
     @app.get("/ui/vulnerabilities", include_in_schema=False)
     def vulnerabilities(request: Request, q: str = "", sev: list[int] = Query([]), kind: str = "",  # noqa: B006
                         status: str = "open", scanner: str = "", owner: str = "", rule: str = "", conf: str = "",
                         account: str = "", artifact: str = "", fix: str = "", prod: str = "", wi_state: str = "",
                         ticket: str = "", age: int = 0, sort: str = "sev", dir: str = "desc", page: int = 1,
-                        size: int = 50, person: str = ""):
+                        size: int = 50, person: str = "", intel: str = ""):
         who = session.current(request)
         flt = _filter(q, sev, kind, status, scanner, owner, rule, conf, account, artifact, fix, prod, wi_state,
-                      ticket, age, sort, dir, page, size, person)
+                      ticket, age, sort, dir, page, size, person, intel)
         with svc.session() as s:
             data = pages.explorer(s, flt, svc.policy, cfg=svc.ownership)
         return render(request, "vulnerabilities.html", {"flt": flt, "owners": [o.slug for o in svc.ownership.owners],
@@ -304,23 +306,26 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                             status: str = "open", scanner: str = "", owner: str = "", rule: str = "",
                             conf: str = "", account: str = "", artifact: str = "", fix: str = "", prod: str = "",
                             wi_state: str = "", ticket: str = "", age: int = 0, sort: str = "sev",
-                            dir: str = "desc", person: str = ""):
+                            dir: str = "desc", person: str = "", intel: str = ""):
         session.current(request)
         flt = _filter(q, sev, kind, status, scanner, owner, rule, conf, account, artifact, fix, prod, wi_state,
-                      ticket, age, sort, dir, 1, 50, person)
+                      ticket, age, sort, dir, 1, 50, person, intel)
         with svc.session() as s:
-            rows = pages.explorer(s, flt, svc.policy, limit_all=50000, cfg=svc.ownership)["rows"]
+            data = pages.explorer(s, flt, svc.policy, limit_all=50000, cfg=svc.ownership)
+            rows, threats = data["rows"], data["threats"]
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["id", "severity", "kind", "status", "vulnerability_or_rule", "package", "installed", "fixed",
                     "asset", "artifact", "account", "owner", "owner_rule", "confidence", "needs_review",
-                    "work_item", "first_seen", "last_seen", "fingerprint"])
+                    "work_item", "first_seen", "last_seen", "fingerprint", "kev", "epss"])
         for f in rows:
+            t = threats.get(f.vuln_id) if f.vuln_id else None
             w.writerow([pages.csv_safe(x) for x in (
                 f.id, views.sev_name(f.severity_id), f.kind, f.status, f.vuln_id or f.rule_key, f.package,
                 f.installed_version, f.fixed_version, f.asset_key, f.artifact, f.account_uid, f.owner_slug,
                 f.owner_rule, f"{f.owner_confidence:.2f}", f.needs_review, f.work_item_key,
-                _fmt_dt(f.first_seen), _fmt_dt(f.last_seen), f.fingerprint)])
+                _fmt_dt(f.first_seen), _fmt_dt(f.last_seen), f.fingerprint,
+                bool(t and t.kev), "" if t is None or t.epss is None else f"{t.epss:.5f}")])
         return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                                  headers={"Content-Disposition": 'attachment; filename="kavlotryx-findings.csv"',
                                           "X-Content-Type-Options": "nosniff"})
@@ -330,7 +335,7 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
         who = session.current(request)
         policy = svc.policy
         with svc.session() as s:
-            detail = views.finding_detail(s, fid)
+            detail = views.finding_detail(s, fid, svc.ownership)
             box = triage_pages.triage_box(s, detail["f"], policy) if detail else None
         if detail is None:
             return render(request, "notfound.html", {"what": f"finding {fid}"}, who, status=404)
@@ -638,7 +643,8 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
                         production_values: str = Form(""), scan_stale_hours: int = Form(...),
                         acc_critical: int | None = Form(None), acc_high: int | None = Form(None),
                         acc_medium: int | None = Form(None), acc_low: int | None = Form(None),
-                        triage_four_eyes: str | None = Form(None)):
+                        triage_four_eyes: str | None = Form(None), kev_min_priority: str | None = Form(None),
+                        epss_threshold: float | None = Form(None), business_critical_values: str | None = Form(None)):
         who = writer(request, csrf, ADMIN)
         split = lambda v: [x.strip() for x in v.split(",") if x.strip()]  # noqa: E731
         updates = {
@@ -652,6 +658,12 @@ def mount_console(app: FastAPI, svc: Kavlotryx) -> None:
             updates["acceptance_max_days"] = {"Critical": acc_critical, "High": acc_high or 1,
                                               "Medium": acc_medium or 1, "Low": acc_low or 1}
             updates["triage_four_eyes"] = triage_four_eyes == "on"
+        if kev_min_priority is not None:  # the priority-signal fields came with the form (FR-PR-01/02)
+            updates["kev_min_priority"] = kev_min_priority
+        if epss_threshold is not None:
+            updates["epss_threshold"] = epss_threshold
+        if business_critical_values is not None:
+            updates["business_critical_values"] = split(business_critical_values)
         if dispatch_min_priority not in ("Low", "Medium", "High", "Critical"):
             return session.redirect("/ui/settings/policy", "error", "Unknown priority.")
         current = svc.policy.model_dump()

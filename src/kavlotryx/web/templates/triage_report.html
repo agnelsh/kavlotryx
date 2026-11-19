@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_parts.html" import vuln_tabs with context %}
-{% block title %}Triage audit report{% endblock %}
+{% block title %}Triage Audit Report{% endblock %}
 {% block content %}
 {% set qs = 'from=' ~ start ~ '&to=' ~ end ~ ('&owner=' ~ owner if owner else '') %}
 <section class="head no-print">
   <div>
     <div class="eyebrow"><i class="dot dot-amber pulse"></i>Vulnerabilities · <span class="t-violet">Audit report</span></div>
-    <h1>Triage audit report</h1>
+    <h1>Triage Audit Report</h1>
     <p class="lede">The risk-acceptance and false-positive register for a period, with control checks, the decision log and notes. The JSON download carries the same content and a SHA-256 digest an auditor can recompute.</p>
   </div>
   <div class="head-actions">
@@ -47,7 +47,7 @@
   </section>
 
   <section class="card">
-    <div class="card-head"><h3>{{ icon("verified") }}Control checks</h3></div>
+    <div class="card-head"><h3>{{ icon("verified") }}Control Checks</h3></div>
     <table class="tbl"><thead><tr><th>Check</th><th>Result</th><th>Detail</th><th>Decisions or findings</th></tr></thead><tbody>
     {% for c in rep.controls %}
     <tr><td class="strong">{{ c.name }}</td><td><span class="tag-{{ {'pass': 'ok', 'warn': 'amber', 'fail': 'crit'}[c.status] }} mono">{{ c.status|upper }}</span></td>
@@ -56,7 +56,7 @@
     </tbody></table>
   </section>
 
-  {% for title, rows in [("Risk acceptance register", rep.risk_acceptances), ("False positive register", rep.false_positives)] %}
+  {% for title, rows in [("Risk Acceptance Register", rep.risk_acceptances), ("False Positive Register", rep.false_positives)] %}
   {% set is_ra = loop.first %}
   <section class="card">
     <div class="card-head"><h3>{{ icon("flag") }}{{ title }} <span class="pill mono">{{ rows|length }}</span></h3></div>
@@ -77,7 +77,7 @@
   {% endfor %}
 
   <section class="card">
-    <div class="card-head"><h3>{{ icon("clock") }}Decision log <span class="pill mono">{{ rep.events|length }}</span></h3><span class="muted small">from the append-only audit table</span></div>
+    <div class="card-head"><h3>{{ icon("clock") }}Decision Log <span class="pill mono">{{ rep.events|length }}</span></h3><span class="muted small">from the append-only audit table</span></div>
     {% if rep.events %}
     <div class="tbl-wrap"><table class="tbl tbl-dense"><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead><tbody>
     {% for e in rep.events %}<tr><td class="mono small">{{ e.at }}</td><td class="mono small">{{ e.actor }}</td><td class="mono small">{{ e.action }}</td><td class="mono small">{{ e.target }}</td></tr>{% endfor %}

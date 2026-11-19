@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, state_badge, conf %}
-{% from "_parts.html" import vuln_tabs, sel, facet_box with context %}
+{% from "_parts.html" import vuln_tabs, sel, facet_box, intel_badges with context %}
 {% block title %}Vulnerabilities{% endblock %}
 {% block content %}
 <section class="head">
@@ -35,6 +35,7 @@
     {{ sel("Confidence", "conf", flt.conf, [("", "All"), ("ok", "Above limit"), ("review", "Needs review")]) }}
     {{ sel("Fix", "fix", flt.fix, [("", "Any"), ("yes", "Fix available"), ("no", "No fix yet")]) }}
     {{ sel("Production", "prod", flt.prod, [("", "Any"), ("yes", "Prod-tagged only")]) }}
+    {{ sel("Exploit signal", "intel", flt.intel, [("", "Any"), ("kev", "CISA KEV"), ("epss", "EPSS ≥ threshold")]) }}
     <label class="sel"><span>Work item</span><select name="wi_state"><option value="">Any</option>{% for k, label, _ in states %}<option value="{{ k }}" {{ 'selected' if flt.wi_state == k }}>{{ label }}</option>{% endfor %}</select></label>
     {{ sel("Ticket", "ticket", flt.ticket, [("", "Any"), ("yes", "Has ticket"), ("no", "No ticket")]) }}
     {{ sel("First seen", "age", flt.age|string, [("0", "Any time"), ("1", "Last 24h"), ("7", "Last 7 days"), ("30", "Last 30 days"), ("90", "Last 90 days")]) }}
@@ -73,7 +74,7 @@
       {% set wi = items.get(f.work_item_key) %}
       <tr class="{{ 'row-dim' if f.status != 'open' }}">
         <td>{{ sev_badge(f.severity_id) }}</td>
-        <td class="cell-main">{% if f.kind == 'vuln' %}<a class="mono strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.vuln_id }}</a><br><small class="muted">{{ f.title|short(64) }}</small>
+        <td class="cell-main">{% if f.kind == 'vuln' %}<a class="mono strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.vuln_id }}</a>{{ intel_badges(threats.get(f.vuln_id)) }}<br><small class="muted">{{ f.title|short(64) }}</small>
           {% else %}<a class="strong plain" href="/ui/vulnerabilities/{{ f.id }}">{{ f.title|short(72) }}</a><br><small class="mono muted">{{ f.rule_key|short(34) }}</small>{% endif %}</td>
         <td class="mono small cell-res">{% if f.kind == 'vuln' %}<b>{{ f.package|short(34) }}</b> {{ f.installed_version|short(16) }} → <span class="{{ 't-ok' if f.fixed_version else 't-crit' }}">{{ (f.fixed_version or 'no fix')|short(16) }}</span>{% else %}<b>{{ (f.asset_name or f.asset_key)|short(36) }}</b> <span class="muted">{{ f.asset_type.rsplit('/', 1)[-1]|short(24) }}</span>{% endif %}
           <br><span class="muted" title="{{ f.asset_key }}">{{ f.artifact|short(30) }}{% if f.account_uid and f.account_uid != f.artifact %} · {{ f.account_uid|short(14) }}{% endif %}</span></td>

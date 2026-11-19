@@ -19,7 +19,7 @@
 {% if tab == 'iam' %}
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("users") }}Single sign-on (OIDC)</h2>{% if sso.on %}<span class="tag-ok mono">on</span>{% else %}<span class="tag-dim mono">off</span>{% endif %}</div>
+    <div class="card-head"><h2>{{ icon("users") }}Single Sign-On (OIDC)</h2>{% if sso.on %}<span class="tag-ok mono">on</span>{% else %}<span class="tag-dim mono">off</span>{% endif %}</div>
     <dl class="kv mono small">
       <dt>KAVLO_OIDC_ISSUER</dt><dd>{{ sso.issuer or '—' }}</dd>
       <dt>KAVLO_OIDC_CLIENT_ID</dt><dd>{{ yes(sso.client) }}</dd>
@@ -34,7 +34,7 @@
     <p class="muted small">Register Kavlotryx with your identity provider as a web app with the redirect URL above. Authorization-code flow with PKCE; the ID token is verified against the provider's published keys.</p>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("tree") }}Group to role mapping</h2><span class="muted mono small">KAVLO_OIDC_ROLE_MAP</span></div>
+    <div class="card-head"><h2>{{ icon("tree") }}Group to Role Mapping</h2><span class="muted mono small">KAVLO_OIDC_ROLE_MAP</span></div>
     {% if sso.role_map %}
     <table class="tbl"><thead><tr><th>Role</th><th>Groups</th><th>Can</th></tr></thead><tbody>
       {% for role, can in [("admin", "everything, approve triage, manage users and policy"), ("analyst", "triage, overrides, notes, pipeline runs"), ("viewer", "read only")] %}
@@ -49,7 +49,7 @@
 </div>
 
 <section class="card">
-  <div class="card-head"><h2>{{ icon("verified") }}API tokens</h2>{% if auth_off %}<span class="tag-orange mono">auth off (local)</span>{% endif %}</div>
+  <div class="card-head"><h2>{{ icon("verified") }}API Tokens</h2>{% if auth_off %}<span class="tag-orange mono">auth off (local)</span>{% endif %}</div>
   {% if tokens %}
   <table class="tbl"><thead><tr><th>Token name</th><th>Role</th><th>Default dashboard</th></tr></thead><tbody>
     {% for name, role, persona in tokens %}<tr><td class="mono">{{ name }}</td><td><span class="tag-dim mono">{{ role }}</span></td><td class="small">{{ (personas|selectattr(0, "equalto", persona)|map(attribute=1)|first) or '—' }}</td></tr>{% endfor %}
@@ -91,7 +91,7 @@
 {# -- Policy ----------------------------------------------------------------- #}
 {% if tab == 'policy' %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("gear") }}Remediation policy</h2>{% if overrides %}<span class="tag-amber mono">{{ overrides|length }} changed in the console</span>{% endif %}</div>
+  <div class="card-head"><h2>{{ icon("gear") }}Remediation Policy</h2>{% if overrides %}<span class="tag-amber mono">{{ overrides|length }} changed in the console</span>{% endif %}</div>
   <form class="form policy-form" method="post" action="/ui/settings/policy">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <fieldset {{ 'disabled' if not is_admin }}>
@@ -112,6 +112,11 @@
           {% for p in ["Critical", "High", "Medium", "Low"] %}<label class="due"><small class="prio prio-{{ p|lower }}"><i class="dot"></i>{{ p }}</small><input type="number" name="acc_{{ p|lower }}" value="{{ policy.acceptance_max_days.get(p, 365) }}" min="1" max="3650"></label>{% endfor %}
         </div></div>
       <label class="field check"><input type="checkbox" name="triage_four_eyes" {{ 'checked' if policy.triage_four_eyes }}><span>Four eyes: a triage decision needs a second admin <small class="src">{{ sources.triage_four_eyes }}</small></span></label>
+      <label class="field"><span>CISA KEV: lowest priority <small class="src">{{ sources.kev_min_priority }}</small></span>
+        <select name="kev_min_priority">{% for v, l in [("", "Off: severity only"), ("Low", "Low"), ("Medium", "Medium"), ("High", "High"), ("Critical", "Critical")] %}<option value="{{ v }}" {{ 'selected' if policy.kev_min_priority == v }}>{{ l }}</option>{% endfor %}</select>
+        <small class="muted">A work item with a known exploited CVE gets at least this priority.</small></label>
+      {{ field("EPSS threshold", "epss_threshold", "number", policy.epss_threshold, "A score at or above this raises priority one level. 0 turns it off.", 'step="0.01" min="0" max="1"') }}
+      {{ field("Business-critical CI values", "business_critical_values", "text", policy.business_critical_values|join(', '), "ServiceNow criticality that counts like production, e.g. 1 - most critical.") }}
     </div>
     {% if is_admin %}
     <div class="form-actions"><button class="btn btn-primary">{{ icon("check") }}Save and rebuild</button></div>
@@ -128,7 +133,7 @@
 {% if tab == 'connectors' %}
 <div class="split" id="connectors">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("ticket") }}Ticket tracker</h2><span class="tag-{{ 'ok' if trk.kind == 'jira' else 'amber' }} mono">{{ 'Jira Cloud' if trk.kind == 'jira' else 'fake tracker (demo)' }}</span></div>
+    <div class="card-head"><h2>{{ icon("ticket") }}Ticket Tracker</h2><span class="tag-{{ 'ok' if trk.kind == 'jira' else 'amber' }} mono">{{ 'Jira Cloud' if trk.kind == 'jira' else 'fake tracker (demo)' }}</span></div>
     <dl class="kv mono small">
       <dt>KAVLO_JIRA_URL</dt><dd>{{ trk.host or '—' }}</dd>
       <dt>KAVLO_JIRA_EMAIL</dt><dd>{{ yes(trk.email) }}</dd>
@@ -147,7 +152,7 @@
   </section>
 </div>
 <section class="card">
-  <div class="card-head"><h2>{{ icon("users") }}Ownership connectors</h2><a class="link" href="/ui/ownership#connectors">Ownership Mapping {{ icon("arrow") }}</a></div>
+  <div class="card-head"><h2>{{ icon("users") }}Ownership Connectors</h2><a class="link" href="/ui/ownership#connectors">Ownership Mapping {{ icon("arrow") }}</a></div>
   <div class="split">
     <dl class="kv mono small">
       <dt>Microsoft Graph</dt><dd>{{ mode_badge(graph.mode) }}</dd>
@@ -164,7 +169,34 @@
       <dt>team relation</dt><dd>{{ leanix.relation }}</dd>
     </dl>
   </div>
-  <p class="muted small">Graph needs an app registration with <code>GroupMember.Read.All</code> (application), and <code>User.Read.All</code> for the manager chain. LeanIX needs a technical-user API token with read access.</p>
+  <div class="split">
+    <dl class="kv mono small">
+      <dt>ServiceNow CMDB</dt><dd>{{ mode_badge(snow.mode) }}</dd>
+      <dt>KAVLO_SERVICENOW_INSTANCE</dt><dd>{{ snow.instance or '—' }}</dd>
+      <dt>KAVLO_SERVICENOW_USER</dt><dd>{{ yes(snow.user) }}</dd>
+      <dt>KAVLO_SERVICENOW_PASSWORD</dt><dd>{{ yes(snow.password) }}</dd>
+      <dt>KAVLO_SERVICENOW_TOKEN</dt><dd>{{ yes(snow.token) }}</dd>
+      {% if snow.snapshot %}<dt>KAVLO_SERVICENOW_SNAPSHOT</dt><dd>{{ snow.snapshot }}</dd>{% endif %}
+      <dt>table</dt><dd>{{ snow.table }}</dd>
+    </dl>
+  </div>
+  <p class="muted small">Graph needs an app registration with <code>GroupMember.Read.All</code> (application), and <code>User.Read.All</code> for the manager chain. LeanIX needs a technical-user API token with read access. ServiceNow needs a user with read access to the CI table and <code>sys_user_group</code> (for example the <code>cmdb_read</code> role), or an OAuth access token.</p>
+</section>
+<section class="card">
+  <div class="card-head"><h2>{{ icon("flag") }}Threat Intelligence</h2><a class="link" href="/ui/ownership#connectors">Status {{ icon("arrow") }}</a></div>
+  <div class="split">
+    <dl class="kv mono small">
+      <dt>CISA KEV</dt><dd>{{ mode_badge(intel.kev) }}</dd>
+      <dt>KAVLO_KEV_URL</dt><dd>{{ intel.kev_url }}</dd>
+      {% if intel.kev_snapshot %}<dt>KAVLO_KEV_SNAPSHOT</dt><dd>{{ intel.kev_snapshot }}</dd>{% endif %}
+    </dl>
+    <dl class="kv mono small">
+      <dt>FIRST EPSS</dt><dd>{{ mode_badge(intel.epss) }}</dd>
+      <dt>KAVLO_EPSS_URL</dt><dd>{{ intel.epss_url }}</dd>
+      {% if intel.epss_snapshot %}<dt>KAVLO_EPSS_SNAPSHOT</dt><dd>{{ intel.epss_snapshot }}</dd>{% endif %}
+    </dl>
+  </div>
+  <p class="muted small">Both feeds are public and need no credentials. <code>KAVLO_THREAT_INTEL_LIVE=1</code> turns on the live download ({{ 'on' if intel.live else 'off' }}); snapshot files work without Internet access. Schedule <code>kavlo connectors sync kev</code> and <code>epss</code> once a day: both feeds change daily.</p>
 </section>
 {% endif %}
 

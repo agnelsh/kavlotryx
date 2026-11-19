@@ -5,7 +5,7 @@ This folder deploys a read-only Kavlotryx demo to [Cloudflare Containers](https:
 What visitors get:
 
 - The full console, signed in automatically as a **viewer**. Every change is blocked: pipeline runs, overrides, triage, notes, uploads, settings and connector syncs. A banner says it's a demo.
-- Sample data seeded when the image is built: the three-day Prowler, Trivy and Wiz story from DefectDojo's public test files, a made-up DefectDojo export, the Microsoft Graph and LeanIX snapshots, and a few triage decisions.
+- Sample data seeded when the image is built: the three-day Prowler, Trivy and Wiz story from DefectDojo's public test files, a made-up DefectDojo export, the Microsoft Graph, LeanIX and ServiceNow CMDB snapshots, CISA KEV and FIRST EPSS entries for the sample CVEs, and a few triage decisions.
 - A fresh copy of that data whenever the container wakes up. After 10 minutes without requests the container sleeps, and the next visitor starts it again, which takes about 10–15 seconds.
 
 The REST API stays closed to anonymous callers.
@@ -64,7 +64,7 @@ Then use **Sign in** on the console with that token. Anything you change lasts u
 
 - The container uses the `basic` instance type (¼ vCPU, 1 GiB memory, 4 GB disk); Kavlotryx needs about 90 MiB. `max_instances` is 1, so there's only ever one demo running, and that also caps the cost.
 - The Workers Paid plan includes 25 GiB-hours of memory, 375 vCPU-minutes and 200 GB-hours of disk per month. With a 10-minute sleep timer, that covers roughly 25 hours of demo time a month; beyond that, usage is billed by the second. To change the sleep time, edit `INACTIVITY_TIMEOUT_MS` in `src/index.ts`.
-- The container has no outbound Internet access (`enableInternet: false`). The demo doesn't need it, because the tracker is a local fake and the connectors read snapshots.
+- The container has no outbound Internet access (`enableInternet: false`). The demo doesn't need it, because the tracker is a local fake and the connectors, KEV and EPSS included, read snapshots.
 - The Worker only passes `GET`, `HEAD` and `POST` requests through to the container.
 
 ## Keeping it private instead
@@ -73,4 +73,4 @@ To limit the demo to people you invite, put the host name behind [Cloudflare Acc
 
 ## Third-party data
 
-The image contains scanner sample files from the [DefectDojo](https://github.com/DefectDojo/django-DefectDojo) test suite (BSD-3-Clause), downloaded at a pinned commit and checked by SHA-256 during the build. Their notice is in the image at `/opt/kavlotryx/THIRD-PARTY-SAMPLES.md`. Everything else in the demo is made-up data.
+The image contains scanner sample files from the [DefectDojo](https://github.com/DefectDojo/django-DefectDojo) test suite (BSD-3-Clause), downloaded at a pinned commit and checked by SHA-256 during the build. Their notice is in the image at `/opt/kavlotryx/THIRD-PARTY-SAMPLES.md`. The KEV entries come from CISA's public catalog and the EPSS scores from FIRST's public API, copied once into `examples/samples/config/`. Everything else in the demo is made-up data.

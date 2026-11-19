@@ -57,7 +57,7 @@
     </section>
     {% endif %}
     <section class="card">
-      <div class="card-head"><h3>{{ icon("fingerprint") }}Decision record</h3>{{ decision_badge(d) }}</div>
+      <div class="card-head"><h3>{{ icon("fingerprint") }}Decision Record</h3>{{ decision_badge(d) }}</div>
       <dl class="kv mono small">
         <dt>kind</dt><dd>{{ d.kind }}</dd>
         <dt>requested</dt><dd>{{ d.requested_by }} · {{ d.requested_at|dt }}</dd>
@@ -82,7 +82,7 @@
     </section>
     {% endif %}
     <section class="card">
-      <div class="card-head"><h3>{{ icon("clock") }}Audit trail</h3></div>
+      <div class="card-head"><h3>{{ icon("clock") }}Audit Trail</h3></div>
       <ol class="timeline">
         {% for e in events %}
         <li class="tl tl-{{ 'ok' if e.action == 'triage.approve' else 'warn' if e.action in ('triage.reject', 'triage.revoked', 'triage.expired') else '' }}"><span class="tl-dot">{{ icon("check" if e.action == 'triage.approve' else "clock") }}</span>

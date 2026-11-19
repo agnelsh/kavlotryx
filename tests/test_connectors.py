@@ -286,7 +286,8 @@ def test_api_connectors(sample_owned):
     sample_owned.settings.api_tokens = f"me:admin:{ADMIN},v:viewer:{VIEW}"
     c = TestClient(create_app(sample_owned))
     rows = c.get("/api/v1/connectors", headers={"Authorization": f"Bearer {VIEW}"}).json()
-    assert {r["name"]: r["mode"] for r in rows} == {"graph": "snapshot", "leanix": "snapshot"}
+    assert {r["name"]: r["mode"] for r in rows} == {"graph": "snapshot", "leanix": "snapshot",
+                                                        "servicenow": "off", "kev": "off", "epss": "off"}
     assert c.post("/api/v1/connectors/graph/sync", headers={"Authorization": f"Bearer {VIEW}"}).status_code == 403
     r = c.post("/api/v1/connectors/leanix/sync", headers={"Authorization": f"Bearer {ADMIN}"})
     assert r.status_code == 200 and r.json()["counts"]["applications"] == 6

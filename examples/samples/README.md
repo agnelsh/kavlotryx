@@ -30,6 +30,13 @@ for Kavlotryx, not from DefectDojo's test suite). Analyst `cli:riley` proposes t
 person approves two of them; the third waits in the Triage queue. On day 2 DefectDojo has mitigated the two urllib3
 findings, so their ticket closes.
 
+Connectors run from snapshot files in `config/`: Microsoft Graph people, LeanIX applications and ServiceNow CMDB
+configuration items (all made up; the CIs reuse the Azure resource ids from the Wiz export), plus the CISA KEV
+entries and FIRST EPSS scores for the sample CVEs, copied from the public feeds. With them, Azure VMs get their
+owner from the CI's support group, production CIs raise the priority of their work items, and CVE-2020-15999 in
+the sample image, a Medium freetype bug that is in the KEV catalog, becomes a Critical ticket. Each work item
+page explains its priority under *Why Critical* (or High, and so on).
+
 `config/` holds the ownership rules for this data. The sample image has no source label, so
 `image_repos` maps it to a made-up repository with the CODEOWNERS file in `config/codeowners/`.
 

@@ -24,7 +24,7 @@
 
 {% if proposed %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("clock") }}Waiting for approval</h2><span class="muted small">{{ 'admins approve or reject' if not is_admin else 'open one to approve or reject' }}</span></div>
+  <div class="card-head"><h2>{{ icon("clock") }}Waiting for Approval</h2><span class="muted small">{{ 'admins approve or reject' if not is_admin else 'open one to approve or reject' }}</span></div>
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Decision</th><th>Kind</th><th>Reason</th><th class="num">Findings</th><th>Highest</th><th>Requested</th><th>Expires</th></tr></thead>
     <tbody>{% for d in proposed %}
@@ -39,7 +39,7 @@
 
 {% if expiring %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("warning") }}Expiring soon</h2><span class="muted small">findings return to the open queue on the expiry date</span></div>
+  <div class="card-head"><h2>{{ icon("warning") }}Expiring Soon</h2><span class="muted small">findings return to the open queue on the expiry date</span></div>
   <ul class="list">{% for d in expiring %}{% set left = (d.expires_on - today).days %}
     <li><a class="row-link" href="/ui/triage/{{ d.id }}"><span class="row-main"><b>#{{ d.id }} · {{ d.reason|short(90) }}</b><small class="muted mono">@{{ d.owner_slug }} · approved by {{ d.decided_by }}</small></span>
       <span class="tag-{{ 'crit' if left <= 7 else 'amber' }} mono">{{ 'today' if left <= 0 else left ~ 'd left' }} · {{ d.expires_on }}</span></a></li>
@@ -62,7 +62,7 @@
 {% endif %}
 
 <section class="card">
-  <div class="card-head"><h2>{{ icon("layers") }}All decisions</h2>
+  <div class="card-head"><h2>{{ icon("layers") }}All Decisions</h2>
     <nav class="tabs" aria-label="Decision state">
       <a class="{{ 'on' if not state }}" href="/ui/triage{{ '?kind=' ~ kind if kind }}">All <b class="mono">{{ decisions|length }}</b></a>
       {% for k, label in decision_states %}<a class="{{ 'on' if state == k }}" href="/ui/triage?state={{ k }}{{ '&kind=' ~ kind if kind }}">{{ label }} <b class="mono">{{ state_counts.get(k, 0) }}</b></a>{% endfor %}

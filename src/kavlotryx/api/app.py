@@ -7,13 +7,14 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from kavlotryx import __version__
 from kavlotryx.adapters import AdapterError
 from kavlotryx.api.auth import ADMIN, INGEST, READ, WRITE, Principal, parse_tokens, require
 from kavlotryx.config import Settings
-from kavlotryx.db import Finding, FindingSource, Scan, WorkItem, utcnow
+from kavlotryx.core.intel import ThreatIndex, ci_dict, cmdb_index, threat_dict, threat_index
+from kavlotryx.db import Finding, FindingSource, Scan, ThreatIntel, WorkItem, utcnow
 from kavlotryx.ocsf.severity import SEVERITY_NAMES
 from kavlotryx.service import Kavlotryx, NotFound
 
@@ -48,7 +49,8 @@ class OwnerOverrideIn(BaseModel):
     reason: str = ""
 
 
-def finding_out(f: Finding, sources: list[FindingSource] | None = None) -> dict[str, Any]:
+def finding_out(f: Finding, sources: list[FindingSource] | None = None, threats: ThreatIndex | None = None,
+                ci: dict[str, Any] | None = None) -> dict[str, Any]:
     d = {
         "id": f.id, "fingerprint": f.fingerprint, "kind": f.kind, "status": f.status,
         "severity": SEVERITY_NAMES.get(f.severity_id, "Unknown"), "severity_id": f.severity_id,
@@ -63,19 +65,23 @@ def finding_out(f: Finding, sources: list[FindingSource] | None = None) -> dict[
                   "evidence": f.owner_evidence},
         "work_item": f.work_item_key or None,
     }
+    if threats is not None and f.vuln_id:
+        d["threat"] = threat_dict(threats.get(f.vuln_id))
     if sources is not None:
         d["tags"] = f.tags
         d["description"] = f.description
         d["remediation"] = f.remediation
         d["sources"] = [{"scanner": s.scanner, "scope": s.scope, "present": s.present,
                          "last_scan_id": s.last_scan_id} for s in sources]
+        d["cmdb_ci"] = ci
     return d
 
 
 def work_item_out(w: WorkItem, today: date) -> dict[str, Any]:
     return {
         "key": w.key, "owner": w.owner_slug, "kind": w.kind, "title": w.title,
-        "priority": w.priority, "state": w.state, "dispatchable": w.dispatchable,
+        "priority": w.priority, "priority_reasons": w.priority_reasons or [], "state": w.state,
+        "dispatchable": w.dispatchable,
         "needs_review": w.needs_review, "due_date": w.due_date,
         "overdue": bool(w.due_date and w.due_date < today and w.state != "verified"),
         "ticket": {"key": w.ticket_key, "url": w.ticket_url} if w.ticket_key else None,
@@ -158,6 +164,7 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
     def list_findings(
         owner: str | None = None, status: str | None = "open", kind: str | None = None,
         min_severity: int = Query(0, ge=0, le=6), needs_review: bool | None = None,
+        kev: bool | None = None, min_epss: float = Query(0.0, ge=0, le=1),
         limit: int = Query(100, le=1000), offset: int = 0,
         _: Principal = Depends(require(READ)),
     ):
@@ -172,9 +179,18 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
             q = q.where(Finding.severity_id >= min_severity)
         if needs_review is not None:
             q = q.where(Finding.needs_review.is_(needs_review))
+        kev_cves = select(ThreatIntel.cve).where(ThreatIntel.kev.is_(True))
+        if kev is True:
+            q = q.where(func.upper(Finding.vuln_id).in_(kev_cves))
+        elif kev is False:
+            q = q.where(func.upper(Finding.vuln_id).not_in(kev_cves))
+        if min_epss:
+            q = q.where(func.upper(Finding.vuln_id).in_(select(ThreatIntel.cve).where(ThreatIntel.epss >= min_epss)))
         q = q.order_by(Finding.severity_id.desc(), Finding.id).limit(limit).offset(offset)
         with svc.session() as s:
-            return [finding_out(f) for f in s.scalars(q)]
+            rows = list(s.scalars(q))
+            threats = threat_index(s, {f.vuln_id for f in rows if f.vuln_id})
+            return [finding_out(f, threats=threats) for f in rows]
 
     @app.get("/api/v1/findings/{finding_id}", tags=["findings"])
     def get_finding(finding_id: int, _: Principal = Depends(require(READ))):
@@ -183,7 +199,8 @@ def create_app(svc: Kavlotryx | None = None, insecure_no_auth: bool = False) -> 
             if f is None:
                 raise HTTPException(404, "finding not found")
             srcs = list(s.scalars(select(FindingSource).where(FindingSource.finding_id == f.id)))
-            return finding_out(f, srcs)
+            ci = cmdb_index(s, svc.ownership.connectors.servicenow).match(f).ci
+            return finding_out(f, srcs, threat_index(s, {f.vuln_id}), ci_dict(ci))
 
     @app.get("/api/v1/findings/{finding_id}/owner/explain", tags=["ownership"])
     def explain(finding_id: int, _: Principal = Depends(require(READ))):

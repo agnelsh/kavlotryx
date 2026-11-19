@@ -59,7 +59,7 @@ def test_default_persona_and_switch(admin, viewer):
 def test_pipeline_status_on_every_persona(admin):
     for p in ("analyst", "team_lead", "platform", "security_manager", "change_manager"):
         html = admin.get(f"/ui?persona={p}").text
-        assert "Pipeline status" in html and "Microsoft Graph" in html and "LeanIX" in html
+        assert "Pipeline Status" in html and "Microsoft Graph" in html and "LeanIX" in html
 
 
 def test_change_manager_lists_production_items(admin):
@@ -141,8 +141,8 @@ def test_settings_never_shows_secrets(admin, day1):
 def test_settings_tabs(admin):
     r = admin.get("/ui/settings", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/ui/settings/iam"
-    tabs = {"iam": ("Single sign-on (OIDC)", "API tokens"), "users": ("Users",),
-            "policy": ("Remediation policy",), "connectors": ("Ticket tracker", "DefectDojo", "Ownership connectors"),
+    tabs = {"iam": ("Single Sign-On (OIDC)", "API Tokens"), "users": ("Users",),
+            "policy": ("Remediation Policy",), "connectors": ("Ticket Tracker", "DefectDojo", "Ownership Connectors"),
             "configuration": ("Database", "audit_events", "0002")}
     for tab, words in tabs.items():
         html = admin.get(f"/ui/settings/{tab}").text

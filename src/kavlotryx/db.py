@@ -147,6 +147,8 @@ class WorkItem(Base):
     priority: Mapped[str] = mapped_column(String(16), default="Low")
     dispatchable: Mapped[bool] = mapped_column(Boolean, default=True)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Why the priority differs from the highest severity (FR-PR-01): [{"code", "text"}]
+    priority_reasons: Mapped[list[dict[str, str]]] = mapped_column(JsonType, default=list)
     state: Mapped[str] = mapped_column(String(32), default="open", index=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     ticket_key: Mapped[str] = mapped_column(String(64), default="")
@@ -299,6 +301,45 @@ class CatalogApp(Base):
     responsible: Mapped[list[str]] = mapped_column(JsonType, default=list)  # e-mail addresses
     url: Mapped[str] = mapped_column(String(512), default="")
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CmdbCi(Base):
+    """A configuration item from the ServiceNow CMDB (FR-EN-08).
+
+    ``keys`` holds every value an asset can match: sys_id, name, object_id
+    (cloud resource id), correlation_id, serial number, FQDN and IP, lower case.
+    """
+
+    __tablename__ = "cmdb_cis"
+    sys_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), default="")
+    class_name: Mapped[str] = mapped_column(String(128), default="")
+    keys: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    support_group: Mapped[str] = mapped_column(String(256), default="")
+    managed_by_group: Mapped[str] = mapped_column(String(256), default="")
+    owned_by: Mapped[str] = mapped_column(String(320), default="")  # e-mail address
+    business_service: Mapped[str] = mapped_column(String(256), default="")
+    criticality: Mapped[str] = mapped_column(String(64), default="")  # e.g. "1 - most critical"
+    environment: Mapped[str] = mapped_column(String(64), default="")  # e.g. "Production"
+    url: Mapped[str] = mapped_column(String(512), default="")
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ThreatIntel(Base):
+    """Exploit signals per CVE (FR-PR-02): CISA KEV listing and FIRST EPSS score."""
+
+    __tablename__ = "threat_intel"
+    cve: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kev: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    kev_name: Mapped[str] = mapped_column(Text, default="")
+    kev_added: Mapped[date | None] = mapped_column(Date, nullable=True)
+    kev_due: Mapped[date | None] = mapped_column(Date, nullable=True)
+    kev_ransomware: Mapped[str] = mapped_column(String(16), default="")  # Known | Unknown
+    kev_action: Mapped[str] = mapped_column(Text, default="")
+    epss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    epss_percentile: Mapped[float | None] = mapped_column(Float, nullable=True)
+    epss_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ConnectorRun(Base):

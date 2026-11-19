@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, mode_badge %}
 {% from "_parts.html" import owner_tabs, sev_counts, run_line with context %}
-{% block title %}Leaders & engineers{% endblock %}
+{% block title %}Leaders & Engineers{% endblock %}
 {% block content %}
 <section class="head">
   <div>
     <div class="eyebrow"><i class="dot dot-amber pulse"></i>Ownership · <span class="t-violet">Microsoft Graph</span></div>
-    <h1>Leaders and engineers</h1>
+    <h1>Leaders and Engineers</h1>
     <p class="lede">Open findings mapped to people. Engineers get the findings named to them and their team's queue. Leaders, from Entra group owners and the manager chain, get everything below them.</p>
   </div>
   <div class="head-actions">{{ mode_badge(graph.mode) }}</div>
@@ -16,7 +16,7 @@
 
 {% if not rows %}
 <section class="card empty">
-  <h2>{{ icon("users") }}No people synced yet</h2>
+  <h2>{{ icon("users") }}No People Synced Yet</h2>
   <p class="muted">Sync Microsoft Graph to load the members and owners of the Entra groups in <code>connectors.graph.group_map</code>, and their managers.</p>
   <a class="btn" href="/ui/ownership#connectors">Go to the Microsoft Graph connector</a>
 </section>
@@ -67,7 +67,7 @@
 
 {% if org.unreached %}
 <section class="card">
-  <div class="card-head"><h2>{{ icon("flag") }}Findings that reach nobody</h2><span class="muted small">map an Entra group in <code>connectors.graph.group_map</code></span></div>
+  <div class="card-head"><h2>{{ icon("flag") }}Findings That Reach Nobody</h2><span class="muted small">map an Entra group in <code>connectors.graph.group_map</code></span></div>
   <table class="tbl"><thead><tr><th>Owner</th><th>Why</th><th class="num">Open findings</th></tr></thead><tbody>
   {% for g in org.unreached %}<tr><td><a class="owner-tag" href="/ui/vulnerabilities?owner={{ g.owner }}">@{{ g.owner }}</a></td><td class="small">{{ g.why }}</td><td class="num mono">{{ g.findings }}</td></tr>{% endfor %}
   </tbody></table>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, state_badge %}
-{% from "_parts.html" import status_tag, decision_badge, notes_card, triage_form with context %}
+{% from "_parts.html" import status_tag, decision_badge, notes_card, triage_form, intel_badges, priority_reasons with context %}
 {% block title %}{{ w.key }}{% endblock %}
 {% block content %}
 {% set left = (w.due_date - today).days if w.due_date else none %}
@@ -54,16 +54,23 @@
   </div>
 </section>
 
+{% if w.priority_reasons %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("flag") }}Why {{ w.priority }}</h2><span class="muted small mono">severity, business context, exploit signals</span></div>
+  {{ priority_reasons(w) }}
+</section>
+{% endif %}
+
 <div class="split split-7-5">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("layers") }}Grouped findings <span class="pill">{{ open }} open · {{ fixed }} fixed{% if tri.triaged %} · {{ tri.triaged }} triaged{% endif %}</span></h2></div>
+    <div class="card-head"><h2>{{ icon("layers") }}Grouped Findings <span class="pill">{{ open }} open · {{ fixed }} fixed{% if tri.triaged %} · {{ tri.triaged }} triaged{% endif %}</span></h2></div>
     <div class="tbl-wrap">
     <table class="tbl">
       <thead><tr><th>{{ 'Vulnerability' if w.kind.startswith('vuln') else 'Rule' }}</th><th>Severity</th><th>{{ 'Package' if w.kind.startswith('vuln') else 'Resource' }}</th><th>Owner rule</th><th>Status</th></tr></thead>
       <tbody>
       {% for m in members %}
       <tr class="{{ 'row-dim' if m.status != 'open' }}">
-        <td><a class="mono strong plain" href="/ui/vulnerabilities/{{ m.id }}">{{ m.vuln_id or m.rule_key }}</a><br><small class="muted">{{ m.title|short(70) }}</small></td>
+        <td><a class="mono strong plain" href="/ui/vulnerabilities/{{ m.id }}">{{ m.vuln_id or m.rule_key }}</a>{{ intel_badges(threats.get(m.vuln_id)) if m.vuln_id }}<br><small class="muted">{{ m.title|short(70) }}</small></td>
         <td>{{ sev_badge(m.severity_id) }}</td>
         <td class="mono small">{% if m.kind == 'vuln' %}{{ m.package }} {{ m.installed_version }}<br><span class="t-ok">→ {{ m.fixed_version or 'no fix' }}</span>{% else %}<span class="trunc-block" title="{{ m.asset_key }}">{{ m.asset_name or m.asset_key }}</span>{% endif %}</td>
         <td class="mono small">{{ m.owner_rule }}<br><span class="muted">{{ "%.2f"|format(m.owner_confidence) }}</span></td>
@@ -76,7 +83,7 @@
   </section>
 
   <section class="card">
-    <div class="card-head"><h2>{{ icon("verified") }}Proof-of-closure timeline</h2>{{ state_badge(w.state) }}</div>
+    <div class="card-head"><h2>{{ icon("verified") }}Proof-of-Closure Timeline</h2>{{ state_badge(w.state) }}</div>
     <ol class="timeline">
       {% for t in timeline %}
       <li class="tl tl-{{ t.tone }}"><span class="tl-dot">{{ icon("check" if t.tone == 'ok' else ("warning" if t.tone in ('warn', 'crit') else "clock")) }}</span>
@@ -92,7 +99,7 @@
 
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("tree") }}Scope footprint <span class="pill">{{ assets|length }} assets</span></h2></div>
+    <div class="card-head"><h2>{{ icon("tree") }}Scope Footprint <span class="pill">{{ assets|length }} assets</span></h2></div>
     <ul class="list">
       {% for a in assets %}
       <li class="asset"><span class="row-main"><b class="mono t-amber trunc">{{ a.name or a.key }}</b><small class="mono muted trunc">{{ a.key }}</small></span>
@@ -101,7 +108,7 @@
     </ul>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("ticket") }}Ticket body</h2><button class="link" type="button" data-copy="#ticket-body">{{ icon("copy") }}Copy</button></div>
+    <div class="card-head"><h2>{{ icon("ticket") }}Ticket Body</h2><button class="link" type="button" data-copy="#ticket-body">{{ icon("copy") }}Copy</button></div>
     <pre class="code" id="ticket-body">{{ body }}</pre>
   </section>
 </div>

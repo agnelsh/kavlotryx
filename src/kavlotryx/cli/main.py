@@ -28,7 +28,8 @@ app = typer.Typer(help="Kavlotryx: scanner findings to owned, tracked, scan-veri
                   no_args_is_help=True)
 owner_app = typer.Typer(help="Explain or override finding owners.", no_args_is_help=True)
 tracker_app = typer.Typer(help="Inspect the fake tracker used for demos.", no_args_is_help=True)
-connectors_app = typer.Typer(help="Microsoft Graph and LeanIX ownership connectors.", no_args_is_help=True)
+connectors_app = typer.Typer(help="Ownership connectors (Microsoft Graph, LeanIX, ServiceNow CMDB) and threat "
+                                  "intelligence (CISA KEV, FIRST EPSS).", no_args_is_help=True)
 triage_app = typer.Typer(help="Risk acceptance, false positives, notes and the audit report.",
                          no_args_is_help=True)
 pull_app = typer.Typer(help="Pull findings from another system.", no_args_is_help=True)
@@ -253,14 +254,20 @@ def owner_set(
 
 @connectors_app.command("sync")
 def connectors_sync(
-    name: Annotated[str, typer.Argument(help="graph | leanix | all")],
+    name: Annotated[str, typer.Argument(help="graph | leanix | servicenow | kev | epss | all")],
     no_rebuild: Annotated[bool, typer.Option("--no-rebuild", help="Do not re-resolve owners after the sync")] = False,
 ) -> None:
-    """Copy people (Graph) or applications (LeanIX) into the local cache, then rebuild owners."""
-    from kavlotryx.connectors import CONNECTORS, ConnectorError
+    """Copy people, applications, CIs or threat data into the local cache, then rebuild owners and priorities.
+
+    'all' syncs every configured connector and skips the ones that are off.
+    """
+    from kavlotryx.connectors import CONNECTORS, ConnectorError, connector_mode
 
     k = svc()
     for n in (CONNECTORS if name == "all" else (name,)):
+        if name == "all" and connector_mode(k.settings, n) == "off":
+            console.print(f"{n}: off, skipped")
+            continue
         try:
             run = k.sync_connector(n, actor=actor(), rebuild=False)
         except ConnectorError as e:

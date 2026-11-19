@@ -220,7 +220,7 @@ def test_console_propose_approve_report(clients):
     tri = c["viewer"].get("/ui/triage").text
     assert f"#{did}" in tri and "Triage" in tri
     rep = c["viewer"].get("/ui/triage/report").text
-    assert "Risk acceptance register" in rep and "Package is vendored" in rep and "sha256:" in rep
+    assert "Risk Acceptance Register" in rep and "Package is vendored" in rep and "sha256:" in rep
     js = c["viewer"].get("/ui/triage/report.json")
     assert js.headers["x-report-digest"] == js.json()["digest"]
     csv_text = c["viewer"].get("/ui/triage/report.csv").text

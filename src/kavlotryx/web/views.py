@@ -10,7 +10,9 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from kavlotryx.db import AuditEvent, Finding, FindingSource, Observation, Scan, WorkItem, utcnow
+from kavlotryx.config import OwnershipConfig
+from kavlotryx.core.intel import cmdb_index, threat_index
+from kavlotryx.db import AuditEvent, Finding, FindingSource, Observation, Scan, ThreatIntel, WorkItem, utcnow
 from kavlotryx.dispatch.dispatcher import describe, ticket_label
 from kavlotryx.ocsf.severity import SEVERITY_NAMES
 
@@ -26,11 +28,13 @@ RULE_LADDER = [
      "desc": "A tag names a person; their Entra group names the team.", "tone": "violet"},
     {"key": "codeowners", "n": 4, "tier": "Source", "name": "Git CODEOWNERS", "conf": "0.85",
      "desc": "Last matching CODEOWNERS line for the file or Dockerfile.", "tone": "ok"},
-    {"key": "leanix", "n": 5, "tier": "CMDB", "name": "LeanIX application", "conf": "0.80",
+    {"key": "leanix", "n": 5, "tier": "Catalog", "name": "LeanIX application", "conf": "0.80",
      "desc": "The asset belongs to a LeanIX application; its team owns it.", "tone": "ok"},
-    {"key": "pattern", "n": 6, "tier": "Glob", "name": "ownership.yaml pattern", "conf": "0.75",
+    {"key": "servicenow", "n": 6, "tier": "CMDB", "name": "ServiceNow CI", "conf": "0.80",
+     "desc": "The asset is a CMDB configuration item; its support group owns it.", "tone": "ok"},
+    {"key": "pattern", "n": 7, "tier": "Glob", "name": "ownership.yaml pattern", "conf": "0.75",
      "desc": "Name, asset, type or rule glob from the config file.", "tone": "orange"},
-    {"key": "default", "n": 7, "tier": "Fallback", "name": "Account or registry default", "conf": "0.50",
+    {"key": "default", "n": 8, "tier": "Fallback", "name": "Account or registry default", "conf": "0.50",
      "desc": "No stronger evidence. Below the limit: needs review.", "tone": "warn"},
 ]
 
@@ -86,7 +90,7 @@ def rule_ladder(s: Session) -> tuple[list[dict[str, Any]], int, int]:
 # -- findings -----------------------------------------------------------------
 
 
-def finding_detail(s: Session, fid: int) -> dict[str, Any] | None:
+def finding_detail(s: Session, fid: int, cfg: OwnershipConfig | None = None) -> dict[str, Any] | None:
     f = s.get(Finding, fid)
     if f is None:
         return None
@@ -102,7 +106,10 @@ def finding_detail(s: Session, fid: int) -> dict[str, Any] | None:
     obs_count = s.scalar(select(func.count(Observation.id))
                          .where(Observation.fingerprint == f.fingerprint)) or 0
     wi = s.get(WorkItem, f.work_item_key) if f.work_item_key else None
-    return {"f": f, "sources": sources, "raw": raw, "obs_count": obs_count, "wi": wi}
+    threat = s.get(ThreatIntel, f.vuln_id.strip().upper()) if f.vuln_id else None
+    ci = cmdb_index(s, cfg.connectors.servicenow).match(f) if cfg is not None else None
+    return {"f": f, "sources": sources, "raw": raw, "obs_count": obs_count, "wi": wi, "threat": threat,
+            "ci": ci.ci if ci else None, "ci_how": ci.how if ci else ""}
 
 
 # -- work items ---------------------------------------------------------------
@@ -173,8 +180,9 @@ def workitem_detail(s: Session, key: str) -> dict[str, Any] | None:
         a = assets.setdefault(m.asset_key, {"key": m.asset_key, "name": m.asset_name, "type": m.asset_type,
                                             "open": 0, "fixed": 0, "triaged": 0})
         a["open" if m.status == "open" else "fixed" if m.status == "fixed" else "triaged"] += 1
+    threats = threat_index(s, {m.vuln_id for m in members if m.vuln_id})
     return {
-        "w": w, "members": members, "lead": lead, "observations": observations,
+        "w": w, "members": members, "lead": lead, "observations": observations, "threats": threats,
         "open": sum(1 for m in members if m.status == "open"),
         "fixed": sum(1 for m in members if m.status == "fixed"),
         "timeline": timeline, "assets": list(assets.values()), "scans": scans,

@@ -58,6 +58,9 @@ def describe(wi: WorkItem, members: list[Finding]) -> str:
         if wi.needs_review:
             lines.append("Owner confidence is below the limit: please confirm or reassign in Kavlotryx.")
     lines.append(f"Priority: {wi.priority}" + (f"; due {wi.due_date.isoformat()}" if wi.due_date else ""))
+    for r in wi.priority_reasons or []:
+        if r.get("code") != "severity":
+            lines.append(f"- {r.get('text', '')}")
     if wi.kind == "vuln-fix":
         lines.append(f"Fix: upgrade {wi.package} to {wi.fixed_version} or later in {wi.artifact}.")
     elif first is not None and first.remediation:

@@ -35,7 +35,7 @@
 </section>
 
 <section class="card">
-  <div class="card-head"><h2>{{ icon("scan") }}Scope status</h2><span class="muted small mono">stale after {{ stale_hours }}h · change in Settings</span></div>
+  <div class="card-head"><h2>{{ icon("scan") }}Scope Status</h2><span class="muted small mono">stale after {{ stale_hours }}h · change in Settings</span></div>
   {% if scopes %}
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Scanner</th><th>Scope</th><th>Last scan</th><th class="num">Rows</th><th class="num">Open findings</th><th>Status</th></tr></thead>
@@ -52,7 +52,7 @@
 
 <div class="split split-7-5">
   <section class="card">
-    <div class="card-head"><h2><i class="dot dot-amber"></i>Scan history</h2><span class="muted mono">latest {{ scans|length }}</span></div>
+    <div class="card-head"><h2><i class="dot dot-amber"></i>Scan History</h2><span class="muted mono">latest {{ scans|length }}</span></div>
     {% if scans %}
     <div class="tbl-wrap"><table class="tbl">
       <thead><tr><th>Run</th><th>Scope</th><th class="num">Rows</th><th class="num">New</th><th class="num">Fixed</th><th class="num">Back</th><th>Received</th></tr></thead>
@@ -72,7 +72,7 @@
   <div class="stack">
     {% if can_ingest %}
     <section class="card" id="upload">
-      <div class="card-head"><h2>{{ icon("upload") }}Upload scanner output</h2></div>
+      <div class="card-head"><h2>{{ icon("upload") }}Upload Scanner Output</h2></div>
       <form class="form" method="post" action="/ui/scans" enctype="multipart/form-data">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field"><span>Scanner</span><select name="scanner">{% for c in cards %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}</select></label>
@@ -83,7 +83,7 @@
     </section>
     {% endif %}
     <section class="card">
-      <div class="card-head"><h2>{{ icon("verified") }}Verifier decisions</h2></div>
+      <div class="card-head"><h2>{{ icon("verified") }}Verifier Decisions</h2></div>
       {% if proofs %}
       <ul class="proofs">
         {% for e in proofs %}{% set w = proof_items.get(e.target) %}{% set kind = e.action.split('.')[1] %}

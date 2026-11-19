@@ -136,3 +136,15 @@
   <button class="btn btn-primary btn-block">{{ icon("check") }}Propose decision</button>
 </form>
 {% endmacro %}
+
+{# Exploit signals for one CVE (FR-PR-02): a CISA KEV tag and the EPSS score. #}
+{% macro intel_badges(t) %}{% if t %}{% if t.kev %} <span class="tag-crit mono intel-tag" title="CISA KEV: {{ t.kev_name }}{{ ' · known ransomware use' if t.kev_ransomware == 'Known' }}">KEV</span>{% endif %}{% if t.epss is not none %} <span class="{{ 'tag-orange' if epss_threshold and t.epss >= epss_threshold else 'tag-dim' }} mono intel-tag" title="EPSS {{ '%.5f'|format(t.epss) }}{% if t.epss_percentile is not none %}, percentile {{ '%.1f'|format(t.epss_percentile * 100) }}{% endif %}{% if t.epss_date %} on {{ t.epss_date }}{% endif %}">EPSS {{ '%.1f'|format(t.epss * 100) }}%</span>{% endif %}{% endif %}{% endmacro %}
+
+{# Why a work item has its priority (FR-PR-01). #}
+{% macro priority_reasons(w) %}
+{% if w.priority_reasons %}
+<ul class="reasons small">
+  {% for r in w.priority_reasons %}<li class="reason reason-{{ r.code }}">{{ r.text }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}

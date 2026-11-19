@@ -79,7 +79,7 @@ def test_workitem_detail_and_404(admin):
     page = admin.get("/ui/workitems").text
     key = re.search(r'href="/ui/workitems/(wi_[0-9a-f]+)"', page).group(1)
     r = admin.get(f"/ui/workitems/{key}")
-    assert r.status_code == 200 and "Proof-of-closure timeline" in r.text and "kavlo-" in r.text
+    assert r.status_code == 200 and "Proof-of-Closure Timeline" in r.text and "kavlo-" in r.text
     assert admin.get("/ui/workitems/wi_missing").status_code == 404
 
 
@@ -110,7 +110,7 @@ def test_actions_flash_and_dry_run(admin, tracker):
     assert "Rebuilt:" in r.text
     before = len(tracker.issues)
     r = admin.post("/ui/actions/dry-run", data={"csrf": token})
-    assert "Dry run: what dispatch would do" in r.text
+    assert "Dry Run: What Dispatch Would Do" in r.text
     assert len(tracker.issues) == before
     r = admin.post("/ui/actions/verify", data={"csrf": token}, follow_redirects=True)
     assert "Verify:" in r.text

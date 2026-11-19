@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, sev_badge, state_badge, conf %}
-{% from "_parts.html" import status_tag, decision_badge, notes_card, triage_form with context %}
+{% from "_parts.html" import status_tag, decision_badge, notes_card, triage_form, intel_badges, priority_reasons with context %}
 {% block title %}{{ detail.f.vuln_id or detail.f.rule_key }}{% endblock %}
 {% block content %}
 {% set f = detail.f %}
@@ -9,7 +9,7 @@
     <div class="crumbs mono"><a href="/ui/vulnerabilities">Vulnerabilities</a> / <b>finding {{ f.id }}</b></div>
     <h1 class="mono-title">{{ f.vuln_id or f.rule_key }}</h1>
     <div class="head-badges">
-      {{ sev_badge(f.severity_id) }}
+      {{ sev_badge(f.severity_id) }}{{ intel_badges(detail.threat) }}
       <span class="tag-dim mono">{{ 'Vulnerability' if f.kind == 'vuln' else 'Misconfiguration' }}</span>
       {{ status_tag(f) }}{% if f.fixed_at %} <span class="muted small mono">{{ f.fixed_at|ago }}</span>{% endif %}
       <span class="owner-tag {{ 'owner-review' if f.needs_review }}">@{{ f.owner_slug }}</span>
@@ -65,6 +65,47 @@
   </div>
 
   <div class="stack">
+    {% set t = detail.threat %}{% set ci = detail.ci %}
+    {% if t or ci or (detail.wi and detail.wi.priority_reasons|length > 1) %}
+    <section class="card" id="risk-card">
+      <div class="card-head"><h3>{{ icon("flag") }}Risk Context</h3>{% if detail.wi %}<span class="mono small">work item priority <b>{{ detail.wi.priority }}</b></span>{% endif %}</div>
+      {% if t and t.kev %}
+      <div class="inset">
+        <span class="tag-crit mono">CISA KEV</span> <b class="small">{{ t.kev_name }}</b>
+        <dl class="kv mono small">
+          {% if t.kev_added %}<dt>added</dt><dd>{{ t.kev_added }}</dd>{% endif %}
+          {% if t.kev_due %}<dt>federal due date</dt><dd>{{ t.kev_due }}</dd>{% endif %}
+          <dt>ransomware use</dt><dd class="{{ 't-crit' if t.kev_ransomware == 'Known' }}">{{ t.kev_ransomware or 'Unknown' }}</dd>
+        </dl>
+        {% if t.kev_action %}<p class="muted small">{{ t.kev_action|short(280) }}</p>{% endif %}
+      </div>
+      {% endif %}
+      {% if t and t.epss is not none %}
+      <div class="inset">
+        <span class="muted mono caps small">EPSS · probability of exploitation in the next 30 days</span>
+        <div class="resolved"><b class="mono">{{ '%.1f'|format(t.epss * 100) }}%</b>
+          <span class="{{ 'tag-orange' if epss_threshold and t.epss >= epss_threshold else 'tag-dim' }} mono">{% if t.epss_percentile is not none %}percentile {{ '%.0f'|format(t.epss_percentile * 100) }}{% endif %}{% if t.epss_date %} · {{ t.epss_date }}{% endif %}</span></div>
+      </div>
+      {% elif f.vuln_id.startswith('CVE-') %}
+      <p class="muted small">No EPSS score yet. Sync the EPSS connector to score this CVE.</p>
+      {% endif %}
+      {% if ci %}
+      <div class="inset">
+        <span class="muted mono caps small">ServiceNow CI · matched by {{ detail.ci_how }}</span>
+        <p class="small"><b>{% if ci.url.startswith('https://') %}<a class="link" href="{{ ci.url }}" target="_blank" rel="noopener noreferrer">{{ ci.name }}</a>{% else %}{{ ci.name }}{% endif %}</b> <span class="muted mono">{{ ci.class_name }}</span></p>
+        <dl class="kv mono small">
+          {% if ci.support_group %}<dt>support group</dt><dd>{{ ci.support_group }}</dd>{% endif %}
+          {% if ci.managed_by_group %}<dt>managed by</dt><dd>{{ ci.managed_by_group }}</dd>{% endif %}
+          {% if ci.owned_by %}<dt>owned by</dt><dd>{{ ci.owned_by }}</dd>{% endif %}
+          {% if ci.business_service %}<dt>business service</dt><dd>{{ ci.business_service }}</dd>{% endif %}
+          {% if ci.environment %}<dt>environment</dt><dd>{{ ci.environment }}</dd>{% endif %}
+          {% if ci.criticality %}<dt>criticality</dt><dd>{{ ci.criticality }}</dd>{% endif %}
+        </dl>
+      </div>
+      {% endif %}
+      {% if detail.wi %}<span class="muted mono caps small">Why the work item has this priority</span>{{ priority_reasons(detail.wi) }}{% endif %}
+    </section>
+    {% endif %}
     <section class="card" id="triage-card">
       <div class="card-head"><h3>{{ icon("flag") }}Triage</h3>{% if tri.live %}{{ decision_badge(tri.live) }}{% endif %}</div>
       {% if tri.live %}
@@ -96,7 +137,7 @@
     </section>
     {% endif %}
     <section class="card">
-      <div class="card-head"><h3>{{ icon("merge") }}Deduplication provenance</h3><span class="tag-ok mono">{{ detail.obs_count }} rows → 1 record</span></div>
+      <div class="card-head"><h3>{{ icon("merge") }}Deduplication Provenance</h3><span class="tag-ok mono">{{ detail.obs_count }} rows → 1 record</span></div>
       {% for s in detail.sources %}
       <div class="inset prov mono">
         <span><span class="tag-{{ 'amber' if loop.index is odd else 'ok' }}">{{ s.s.scanner|upper }}</span> <span class="muted">{{ s.s.scope }}</span></span>

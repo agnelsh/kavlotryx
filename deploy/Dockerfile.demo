@@ -36,6 +36,9 @@ ENV KAVLO_CONFIG_DIR=/etc/kavlotryx \
     KAVLO_FAKE_TRACKER_FILE=/tmp/kavlotryx/tracker.json \
     KAVLO_GRAPH_SNAPSHOT=/etc/kavlotryx/graph-snapshot.json \
     KAVLO_LEANIX_SNAPSHOT=/etc/kavlotryx/leanix-snapshot.json \
+    KAVLO_SERVICENOW_SNAPSHOT=/etc/kavlotryx/servicenow-snapshot.json \
+    KAVLO_KEV_SNAPSHOT=/etc/kavlotryx/kev-snapshot.json \
+    KAVLO_EPSS_SNAPSHOT=/etc/kavlotryx/epss-snapshot.json \
     KAVLO_AUTO_MIGRATE=1 \
     PYTHONUNBUFFERED=1
 USER 10001

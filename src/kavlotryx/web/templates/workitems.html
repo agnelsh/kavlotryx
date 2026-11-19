@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, state_badge %}
 {% from "_parts.html" import vuln_tabs %}
-{% block title %}Work items & Jira{% endblock %}
+{% block title %}Work Items & Jira{% endblock %}
 {% block content %}
 <section class="head">
   <div>
     <div class="eyebrow"><span class="tag-amber mono">dispatch</span> <span class="muted">/</span> <span class="t-violet">idempotent: label kavlo-&lt;hash&gt;</span></div>
-    <h1>Work items &amp; root-cause batches</h1>
+    <h1>Work Items &amp; Root-Cause Batches</h1>
     <p class="lede">One ticket per fix and owner. A repeat run never files a second ticket; it finds the label and updates the one that exists.</p>
   </div>
   {% if can_write %}
@@ -32,7 +32,7 @@
 
 {% if dry is not none %}
 <section class="card card-accent">
-  <div class="card-head"><h2>{{ icon("eye") }}Dry run: what dispatch would do</h2><span class="pill">{{ dry|length }} actions · nothing was sent</span></div>
+  <div class="card-head"><h2>{{ icon("eye") }}Dry Run: What Dispatch Would Do</h2><span class="pill">{{ dry|length }} actions · nothing was sent</span></div>
   {% if dry %}
   <table class="tbl">
     <thead><tr><th>Work item</th><th>Action</th><th>Ticket</th><th>Detail</th></tr></thead>
@@ -44,7 +44,7 @@
 
 <div class="split">
   <section class="card">
-    <div class="card-head"><h2>{{ icon("tree") }}Deterministic root-cause batching</h2></div>
+    <div class="card-head"><h2>{{ icon("tree") }}Deterministic Root-Cause Batching</h2></div>
     <p class="muted">Findings that one change removes share a group key. The owner is always part of the key, so a team only gets its own work.</p>
     <div class="split split-even">
       <div class="inset">
@@ -60,7 +60,7 @@
     </div>
   </section>
   <section class="card">
-    <div class="card-head"><h2>{{ icon("merge") }}Ticket noise reduction</h2>{% if reduction is not none %}<span class="tag-ok mono">−{{ reduction }}%</span>{% endif %}</div>
+    <div class="card-head"><h2>{{ icon("merge") }}Ticket Noise Reduction</h2>{% if reduction is not none %}<span class="tag-ok mono">−{{ reduction }}%</span>{% endif %}</div>
     <div class="noise">
       <div><span class="muted">Raw scanner rows</span><b class="mono t-crit">{{ observations }}</b></div>
       <span class="bar"><i class="bar-fill tone-crit" data-w="100"></i></span>
@@ -73,7 +73,7 @@
 
 <section class="card">
   <div class="card-head">
-    <h2>{{ icon("ticket") }}Work items <span class="pill">{{ rows|length }}</span></h2>
+    <h2>{{ icon("ticket") }}Work Items <span class="pill">{{ rows|length }}</span></h2>
     <nav class="tabs">
       <a class="{{ 'on' if not owner }}" href="/ui/workitems{{ '?state=' ~ state if state }}">All</a>
       {% for o, n in owner_counts|dictsort %}<a class="{{ 'on' if owner == o }}" href="/ui/workitems?owner={{ o }}{{ '&state=' ~ state if state }}">{{ o }} <small>{{ n }}</small></a>{% endfor %}
@@ -107,17 +107,17 @@
 <section class="trio">
   <div class="card">
     <span class="mono caps small"><i class="dot dot-ok"></i>Ticket dispatch</span>
-    <h3>One ticket per work item</h3>
+    <h3>One Ticket per Work Item</h3>
     <p class="muted">The label <code>kavlo-&lt;hash&gt;</code> is searched before every create. Text goes in as plain ADF text nodes, never Jira markup.</p>
   </div>
   <div class="card">
     <span class="mono caps small"><i class="dot dot-amber"></i>Verification</span>
-    <h3>No false closures</h3>
+    <h3>No False Closures</h3>
     <p class="muted">A ticket moved to Done while scans still report findings is held in <code>pending_verification</code>.</p>
   </div>
   <div class="card">
     <span class="mono caps small"><i class="dot dot-crit"></i>Regression</span>
-    <h3>Reopen, never duplicate</h3>
+    <h3>Reopen, Never Duplicate</h3>
     <p class="muted">If a fixed finding returns, Kavlotryx reopens the same ticket with a comment.</p>
   </div>
 </section>

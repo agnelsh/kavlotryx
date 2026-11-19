@@ -72,9 +72,51 @@ class LeanixConnectorConfig(BaseModel):
     responsible_roles: list[str] = Field(default_factory=lambda: ["Responsible", "Application Owner"])
 
 
+class ServiceNowConnectorConfig(BaseModel):
+    """ServiceNow CMDB (FR-EN-08): an asset matched to a configuration item gets the CI's support group.
+
+    The CI also brings business context, criticality and environment, that the
+    priority rules use (FR-PR-01).
+    """
+
+    table: str = "cmdb_ci"  # or a class such as cmdb_ci_vm_instance, cmdb_ci_server
+    query: str = "operational_status=1"  # encoded query that limits the CIs read
+    ci_tag_keys: list[str] = Field(default_factory=lambda: ["servicenow_ci", "cmdb_ci", "ci"])
+    match_names: bool = True  # resource or image name equals a CI name (only when the name is unique)
+    group_map: dict[str, str] = Field(default_factory=dict)  # support group name -> owner slug
+    # Field names differ between CI classes. The first field with a value wins.
+    # "busines_criticality" is spelled that way in ServiceNow.
+    criticality_fields: list[str] = Field(default_factory=lambda: ["busines_criticality", "business_criticality"])
+    environment_fields: list[str] = Field(default_factory=lambda: ["used_for", "environment"])
+    service_field: str = ""  # optional reference to a business service, e.g. "u_business_service.name"
+
+    @field_validator("table")
+    @classmethod
+    def _table(cls, v: str) -> str:
+        if not v or not all(c.isalnum() or c == "_" for c in v):
+            raise ValueError("connectors.servicenow.table must be a table name such as cmdb_ci")
+        return v
+
+    @field_validator("criticality_fields", "environment_fields")
+    @classmethod
+    def _fields(cls, v: list[str]) -> list[str]:
+        for f in v:
+            if not f or not all(c.isalnum() or c in "_." for c in f):
+                raise ValueError(f"not a ServiceNow field name: {f!r}")
+        return v
+
+    @field_validator("service_field")
+    @classmethod
+    def _service_field(cls, v: str) -> str:
+        if v and not all(c.isalnum() or c in "_." for c in v):
+            raise ValueError(f"not a ServiceNow field name: {v!r}")
+        return v
+
+
 class ConnectorsConfig(BaseModel):
     graph: GraphConnectorConfig = Field(default_factory=GraphConnectorConfig)
     leanix: LeanixConnectorConfig = Field(default_factory=LeanixConnectorConfig)
+    servicenow: ServiceNowConnectorConfig = Field(default_factory=ServiceNowConnectorConfig)
 
 
 class OwnershipConfig(BaseModel):
@@ -123,12 +165,27 @@ class PolicyConfig(BaseModel):
         default_factory=lambda: {"Critical": 30, "High": 90, "Medium": 180, "Low": 365}
     )
     triage_four_eyes: bool = True
+    # Priority from exploit signals and business context (FR-PR-01/02). A CVE in the
+    # CISA KEV catalog sets at least this priority ("" turns it off). An EPSS score at
+    # or above the threshold raises the priority one level (0 turns it off). A
+    # ServiceNow CI with one of these criticality values counts like production.
+    kev_min_priority: str = "Critical"
+    epss_threshold: float = Field(default=0.1, ge=0, le=1)
+    business_critical_values: list[str] = Field(default_factory=lambda: ["1 - most critical"])
+
+    @field_validator("kev_min_priority")
+    @classmethod
+    def _kev_priority(cls, v: str) -> str:
+        if v not in ("", "Low", "Medium", "High", "Critical"):
+            raise ValueError("kev_min_priority must be Low, Medium, High, Critical or empty")
+        return v
 
 
 # Policy keys that admins may change in the console (Settings page).
 EDITABLE_POLICY_KEYS = ("confidence_limit", "due_days", "dispatch_min_priority", "dispatch_without_fix",
                         "production_tag_keys", "production_values", "scan_stale_hours",
-                        "acceptance_max_days", "triage_four_eyes")
+                        "acceptance_max_days", "triage_four_eyes", "kev_min_priority", "epss_threshold",
+                        "business_critical_values")
 
 
 # --- process settings --------------------------------------------------------
@@ -154,6 +211,17 @@ class Settings:
     leanix_host: str = ""  # e.g. acme.leanix.net
     leanix_token: str = field(default="", repr=False)
     leanix_snapshot: str = ""
+    servicenow_instance: str = ""  # e.g. acme.service-now.com
+    servicenow_user: str = ""
+    servicenow_password: str = field(default="", repr=False)
+    servicenow_token: str = field(default="", repr=False)  # OAuth access token, instead of user and password
+    servicenow_snapshot: str = ""
+    # Threat intelligence (FR-PR-02). Live mode calls two public feeds, so it is opt-in.
+    threat_intel_live: bool = False  # KAVLO_THREAT_INTEL_LIVE=1
+    kev_url: str = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    epss_url: str = "https://api.first.org/data/v1/epss"
+    kev_snapshot: str = ""  # a copy of the KEV JSON feed
+    epss_snapshot: str = ""  # an EPSS API response (JSON) or the daily CSV
     defectdojo_url: str = ""  # e.g. https://defectdojo.example.com
     defectdojo_token: str = field(default="", repr=False)
     defectdojo_products: str = ""  # comma-separated product names; empty = every product
@@ -194,6 +262,16 @@ class Settings:
             leanix_host=e("KAVLO_LEANIX_HOST", ""),
             leanix_token=e("KAVLO_LEANIX_TOKEN", ""),
             leanix_snapshot=e("KAVLO_LEANIX_SNAPSHOT", ""),
+            servicenow_instance=e("KAVLO_SERVICENOW_INSTANCE", ""),
+            servicenow_user=e("KAVLO_SERVICENOW_USER", ""),
+            servicenow_password=e("KAVLO_SERVICENOW_PASSWORD", ""),
+            servicenow_token=e("KAVLO_SERVICENOW_TOKEN", ""),
+            servicenow_snapshot=e("KAVLO_SERVICENOW_SNAPSHOT", ""),
+            threat_intel_live=e("KAVLO_THREAT_INTEL_LIVE", "0") == "1",
+            kev_url=e("KAVLO_KEV_URL", cls.kev_url),
+            epss_url=e("KAVLO_EPSS_URL", cls.epss_url),
+            kev_snapshot=e("KAVLO_KEV_SNAPSHOT", ""),
+            epss_snapshot=e("KAVLO_EPSS_SNAPSHOT", ""),
             defectdojo_url=e("KAVLO_DEFECTDOJO_URL", ""),
             defectdojo_token=e("KAVLO_DEFECTDOJO_TOKEN", ""),
             defectdojo_products=e("KAVLO_DEFECTDOJO_PRODUCTS", ""),

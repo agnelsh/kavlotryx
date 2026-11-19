@@ -18,7 +18,7 @@ owners:
 tag_keys: [owner, team]
 
 # Ownership connectors. Demo data comes from snapshot files (KAVLO_GRAPH_SNAPSHOT,
-# KAVLO_LEANIX_SNAPSHOT); with credentials the same rules use the live APIs.
+# KAVLO_LEANIX_SNAPSHOT, KAVLO_SERVICENOW_SNAPSHOT); with credentials the same rules use the live APIs.
 connectors:
   graph:
     # Wiz tags such as Owner=JD name a person; Entra group membership names the team.
@@ -34,6 +34,19 @@ connectors:
       Cloud Platform Team: platform
       Storefront: app
       Application Team: app
+  servicenow:
+    # CMDB configuration items: Azure VMs by resource id (object_id), the image and the
+    # DefectDojo product by name. The support group names the team.
+    table: cmdb_ci
+    group_map:
+      Cloud Infrastructure: platform
+      Network Operations: platform
+      DevOps Tooling: platform
+      Windows Server Team: platform
+      Database Administration: platform
+      Storefront Engineering: app
+      Payments Engineering: app
+      IAM Operations: identity
 
 # The sample image "teamdojo:latest" has no source label, so map it to a repo.
 image_repos:

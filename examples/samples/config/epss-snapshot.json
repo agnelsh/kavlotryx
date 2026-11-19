@@ -1,0 +1,105 @@
+{
+ "_comment": "FIRST EPSS API response for the CVEs in the sample demo (KAVLO_EPSS_SNAPSHOT). Source: api.first.org/data/v1/epss. EPSS is published by FIRST; see first.org/epss for the terms of use.",
+ "status": "OK",
+ "total": 16,
+ "offset": 0,
+ "limit": 100,
+ "data": [
+  {
+   "cve": "CVE-2024-6345",
+   "epss": "0.019390000",
+   "percentile": "0.805830000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2024-5535",
+   "epss": "0.061340000",
+   "percentile": "0.935980000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2024-24786",
+   "epss": "0.012620000",
+   "percentile": "0.702650000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2023-45803",
+   "epss": "0.005930000",
+   "percentile": "0.491400000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2023-45288",
+   "epss": "0.894550000",
+   "percentile": "0.997900000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2023-44487",
+   "epss": "0.999990000",
+   "percentile": "0.999980000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2023-43804",
+   "epss": "0.013600000",
+   "percentile": "0.723300000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2023-39325",
+   "epss": "0.037960000",
+   "percentile": "0.902220000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2022-40897",
+   "epss": "0.026320000",
+   "percentile": "0.858620000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2021-33503",
+   "epss": "0.032730000",
+   "percentile": "0.886830000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2021-28363",
+   "epss": "0.021660000",
+   "percentile": "0.826370000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2020-28196",
+   "epss": "0.042450000",
+   "percentile": "0.912420000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2020-15999",
+   "epss": "0.638940000",
+   "percentile": "0.992390000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2019-12900",
+   "epss": "0.079770000",
+   "percentile": "0.948680000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2018-1324",
+   "epss": "0.036560000",
+   "percentile": "0.898530000",
+   "date": "2026-11-19"
+  },
+  {
+   "cve": "CVE-2018-11771",
+   "epss": "0.052530000",
+   "percentile": "0.927110000",
+   "date": "2026-11-19"
+  }
+ ]
+}

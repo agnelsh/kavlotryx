@@ -13,7 +13,7 @@ from kavlotryx.db import Base, init_db
 
 def test_migrations_build_exactly_the_models(svc):
     """The schema from 'upgrade head' matches the SQLAlchemy models, on SQLite and PostgreSQL."""
-    assert migrate.current(svc.engine) == migrate.head() == "0002"
+    assert migrate.current(svc.engine) == migrate.head() == "0003"
     with svc.engine.connect() as c:
         diff = compare_metadata(MigrationContext.configure(c, opts={"compare_type": True}), Base.metadata)
     assert diff == []
@@ -62,4 +62,4 @@ def test_no_auto_migrate_refuses_an_old_schema(tmp_path):
 
 
 def test_history_lists_revisions():
-    assert [r for r, _ in migrate.history()] == ["0001", "0002"]
+    assert [r for r, _ in migrate.history()] == ["0001", "0002", "0003"]

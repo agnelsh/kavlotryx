@@ -15,11 +15,13 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from kavlotryx.config import EDITABLE_POLICY_KEYS, OwnershipConfig, PolicyConfig, Settings
-from kavlotryx.connectors import CONNECTORS, connector_mode, last_runs
+from kavlotryx.connectors import CONNECTORS, LABELS, connector_mode, last_runs
 from kavlotryx.core import people
+from kavlotryx.core.intel import cmdb_index, threat_index
 from kavlotryx.db import (
     AuditEvent,
     CatalogApp,
+    CmdbCi,
     DirectoryPerson,
     Finding,
     FindingSource,
@@ -27,6 +29,7 @@ from kavlotryx.db import (
     OwnerOverride,
     Scan,
     SettingOverride,
+    ThreatIntel,
     WorkItem,
     utcnow,
 )
@@ -96,7 +99,7 @@ def pipeline(s: Session, settings: Settings, policy: PolicyConfig) -> dict[str, 
     connectors = []
     for n in CONNECTORS:
         r = runs[n]
-        connectors.append({"name": n, "label": "Microsoft Graph" if n == "graph" else "LeanIX",
+        connectors.append({"name": n, "label": LABELS[n],
                            "mode": connector_mode(settings, n), "run": r,
                            "age_h": _hours_since(r.finished_at) if r else None})
     last_scan = max((r["scan"].received_at for r in sc), default=None, key=lambda d: _aware(d))
@@ -138,6 +141,16 @@ def dashboard(s: Session, persona: str, team: str, summary: dict[str, Any], poli
         d["merged"] = sum(1 for n in multi.values() if n > 1)
         d["review_rows"] = sorted((f for f in open_f if f.needs_review), key=lambda f: -f.severity_id)[:8]
         d["newest"] = sorted(open_f, key=lambda f: (_aware(f.first_seen), f.severity_id), reverse=True)[:8]
+        threats = threat_index(s, {f.vuln_id for f in open_f if f.vuln_id})
+        d["threats"] = threats
+
+        def signal(f: Finding) -> tuple[bool, float]:
+            t = threats.get(f.vuln_id) if f.vuln_id else None
+            return (bool(t and t.kev), (t.epss or 0.0) if t and t.epss is not None else 0.0)
+
+        hot = [f for f in open_f if signal(f)[0] or (policy.epss_threshold and signal(f)[1] >= policy.epss_threshold)]
+        d["exploited"] = sorted(hot, key=lambda f: (signal(f), f.severity_id), reverse=True)[:8]
+        d["exploited_total"] = len(hot)
     elif persona == "team_lead":
         team = team if team in owners else (owners[0] if owners else "")
         mine = sorted((w for w in active if w.owner_slug == team),
@@ -193,7 +206,8 @@ def dashboard(s: Session, persona: str, team: str, summary: dict[str, Any], poli
     elif persona == "change_manager":
         keys = {k.lower() for k in policy.production_tag_keys}
         vals = {v.lower() for v in policy.production_values}
-        prod = set()
+        # production by tag, or by a ServiceNow CI (environment or criticality): the "impact" reason
+        prod = {w.key for w in active if any(r.get("code") == "impact" for r in w.priority_reasons or [])}
         for f in s.scalars(select(Finding).where(Finding.status == "open")):
             if any(k.lower() in keys and str(v).lower() in vals for k, v in (f.tags or {}).items()):
                 prod.add(f.work_item_key)
@@ -237,6 +251,7 @@ class VulnFilter:
     ticket: str = ""
     age: int = 0
     person: str = ""
+    intel: str = ""  # kev | epss (FR-PR-02)
     sort: str = "sev"
     dir: str = "desc"
     page: int = 1
@@ -266,7 +281,7 @@ class VulnFilter:
         labels = {"q": "search", "kind": "kind", "scanner": "scanner", "owner": "owner", "rule": "rule",
                   "conf": "confidence", "account": "account", "artifact": "artifact", "fix": "fix available",
                   "prod": "production", "wi_state": "work item", "ticket": "has ticket", "age": "first seen ≤ days",
-                  "person": "person"}
+                  "person": "person", "intel": "exploit signal"}
         out: list[tuple[str, str]] = []
         if self.sev:
             names = ", ".join(sev_name(x) for x in sorted(self.sev, reverse=True))
@@ -320,6 +335,11 @@ def _apply(q, f: VulnFilter, policy: PolicyConfig, ids: set[int] | None = None):
         q = q.where(Finding.work_item_key.in_(select(WorkItem.key).where(WorkItem.ticket_key != "")))
     elif f.ticket == "no":
         q = q.where(Finding.work_item_key.not_in(select(WorkItem.key).where(WorkItem.ticket_key != "")))
+    if f.intel == "kev":
+        q = q.where(func.upper(Finding.vuln_id).in_(select(ThreatIntel.cve).where(ThreatIntel.kev.is_(True))))
+    elif f.intel == "epss":
+        q = q.where(func.upper(Finding.vuln_id).in_(select(ThreatIntel.cve).where(
+            ThreatIntel.epss >= (policy.epss_threshold or 0.0))))
     if f.age:
         q = q.where(Finding.first_seen >= utcnow() - timedelta(days=f.age))
     if f.q:
@@ -344,7 +364,8 @@ def explorer(s: Session, f: VulnFilter, policy: PolicyConfig, limit_all: int | N
     col = SORTS.get(f.sort, Finding.severity_id)
     order = [col.desc() if f.dir == "desc" else col.asc(), Finding.severity_id.desc(), Finding.id]
     if limit_all is not None:
-        return {"rows": s.scalars(base.order_by(*order).limit(limit_all)).all(), "total": total}
+        rows = s.scalars(base.order_by(*order).limit(limit_all)).all()
+        return {"rows": rows, "total": total, "threats": threat_index(s, {r.vuln_id for r in rows if r.vuln_id})}
     size = f.size if f.size in (25, 50, 100, 200) else 50
     pages = max(1, -(-total // size))
     page = min(max(1, f.page), pages)
@@ -372,7 +393,8 @@ def explorer(s: Session, f: VulnFilter, policy: PolicyConfig, limit_all: int | N
                                  .where(FindingSource.finding_id.in_([r.id for r in rows]))):
             srcs[fid].append(sc)
     return {"rows": rows, "total": total, "page": page, "pages": pages, "size": size, "facet": facet,
-            "items": items, "sources": srcs, "person_name": person_name}
+            "items": items, "sources": srcs, "person_name": person_name,
+            "threats": threat_index(s, {r.vuln_id for r in rows if r.vuln_id})}
 
 
 def csv_safe(v: Any) -> str:
@@ -397,13 +419,16 @@ def ownership(s: Session, cfg: OwnershipConfig, policy: PolicyConfig, settings: 
     teams_for: dict[str, list[str]] = defaultdict(list)
     for t, o in cfg.connectors.leanix.team_map.items():
         teams_for[o].append(t)
+    sn_for: dict[str, list[str]] = defaultdict(list)
+    for g, o in cfg.connectors.servicenow.group_map.items():
+        sn_for[o].append(g)
     owners = [{"o": o, "findings": by_owner_f.get(o.slug, 0), "review": by_owner_r.get(o.slug, 0),
                "active": by_owner_w.get(o.slug, 0), "groups": groups_for.get(o.slug, []),
-               "teams": teams_for.get(o.slug, [])} for o in cfg.owners]
+               "teams": teams_for.get(o.slug, []), "sn_groups": sn_for.get(o.slug, [])} for o in cfg.owners]
     if by_owner_f.get(cfg.fallback_owner):
         owners.append({"o": None, "slug": cfg.fallback_owner, "findings": by_owner_f[cfg.fallback_owner],
                        "review": by_owner_r.get(cfg.fallback_owner, 0), "active": by_owner_w.get(cfg.fallback_owner, 0),
-                       "groups": [], "teams": []})
+                       "groups": [], "teams": [], "sn_groups": []})
 
     people = s.scalars(select(DirectoryPerson).order_by(DirectoryPerson.display_name)).all()
     members = Counter(g.lower() for p in people for g in p.groups)
@@ -420,6 +445,22 @@ def ownership(s: Session, cfg: OwnershipConfig, policy: PolicyConfig, settings: 
         mapped = next(((t, team_map.get(t.lower()) or (t.lower() if t.lower() in known else None))
                        for t in a.teams if team_map.get(t.lower()) or t.lower() in known), None)
         app_rows.append({"a": a, "mapped": mapped, "findings": app_hits.get(a.id, 0)})
+    # ServiceNow: every CI that an open finding's asset matches, whatever rule set its owner
+    index = cmdb_index(s, cfg.connectors.servicenow)
+    ci_hits: Counter[str] = Counter()
+    if index:
+        for f in open_f:
+            ci = index.match(f).ci
+            if ci is not None:
+                ci_hits[ci.sys_id] += 1
+    sn_map = {k.lower(): v for k, v in cfg.connectors.servicenow.group_map.items()}
+    alias = {o.slug: o.slug for o in cfg.owners} | {a.lower(): o.slug for o in cfg.owners for a in o.aliases}
+    ci_rows = []
+    all_cis = s.scalars(select(CmdbCi).order_by(CmdbCi.name)).all()
+    for c in sorted(all_cis, key=lambda c: (-ci_hits.get(c.sys_id, 0), c.name.lower()))[:40]:
+        mapped = next(((g, sn_map.get(g.lower()) or alias.get(g.lower())) for g in (c.support_group, c.managed_by_group)
+                       if g and (sn_map.get(g.lower()) or alias.get(g.lower()))), None)
+        ci_rows.append({"c": c, "mapped": mapped, "findings": ci_hits.get(c.sys_id, 0)})
     runs = last_runs(s)
     connectors = {n: {"mode": connector_mode(settings, n), "run": runs[n]} for n in CONNECTORS}
     review_rows = s.scalars(select(Finding).where(Finding.status == "open", Finding.needs_review.is_(True))
@@ -427,8 +468,22 @@ def ownership(s: Session, cfg: OwnershipConfig, policy: PolicyConfig, settings: 
     overrides = s.scalars(select(OwnerOverride).order_by(OwnerOverride.created_at.desc())).all()
     return {"ladder": ladder, "total": total, "review": review, "owners": owners, "people": people,
             "graph_groups": graph_groups, "apps": app_rows, "connectors": connectors, "review_rows": review_rows,
-            "overrides": overrides, "person_hits": person_hits,
+            "overrides": overrides, "person_hits": person_hits, "cis": ci_rows, "ci_total": len(all_cis),
+            "intel": intel_counts(s, policy), "policy": policy,
             "coverage": pct(sum(1 for f in open_f if not f.needs_review), len(open_f)) if open_f else None}
+
+
+def intel_counts(s: Session, policy: PolicyConfig) -> dict[str, int]:
+    """Open findings with exploit signals (FR-PR-02)."""
+    cves = {(v or "").upper() for v in s.scalars(select(Finding.vuln_id).where(Finding.status == "open",
+                                                                              Finding.vuln_id.like("CVE-%")))}
+    rows = threat_index(s, cves).rows
+    open_v = list(s.scalars(select(Finding.vuln_id).where(Finding.status == "open", Finding.vuln_id.like("CVE-%"))))
+    kev = sum(1 for v in open_v if (t := rows.get(v.upper())) is not None and t.kev)
+    epss = sum(1 for v in open_v if policy.epss_threshold > 0 and (t := rows.get(v.upper())) is not None
+               and t.epss is not None and t.epss >= policy.epss_threshold)
+    return {"kev_open": kev, "epss_open": epss, "cves": len(cves),
+            "scored": sum(1 for c in cves if (t := rows.get(c)) is not None and t.epss is not None)}
 
 
 # -- ownership: people -----------------------------------------------------------------
@@ -523,6 +578,13 @@ def settings_page(s: Session, settings: Settings, policy: PolicyConfig, cfg: Own
         "leanix": {"mode": connector_mode(settings, "leanix"), "host": settings.leanix_host,
                    "token": is_set(settings.leanix_token), "snapshot": settings.leanix_snapshot,
                    "relation": cfg.connectors.leanix.team_relation},
+        "snow": {"mode": connector_mode(settings, "servicenow"), "instance": settings.servicenow_instance,
+                 "user": is_set(settings.servicenow_user), "password": is_set(settings.servicenow_password),
+                 "token": is_set(settings.servicenow_token), "snapshot": settings.servicenow_snapshot,
+                 "table": cfg.connectors.servicenow.table},
+        "intel": {"kev": connector_mode(settings, "kev"), "epss": connector_mode(settings, "epss"),
+                  "live": settings.threat_intel_live, "kev_url": settings.kev_url, "epss_url": settings.epss_url,
+                  "kev_snapshot": settings.kev_snapshot, "epss_snapshot": settings.epss_snapshot},
         "tokens": token_rows, "auth_off": tokens is None,
         "config_dir": str(settings.config_dir), "owners": len(cfg.owners),
         "files": {n: (settings.config_dir / n).exists() for n in ("ownership.yaml", "policy.yaml")},
