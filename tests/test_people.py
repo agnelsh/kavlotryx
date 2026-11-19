@@ -118,7 +118,7 @@ def console(sample_owned):  # noqa: F811
 def test_people_page_empty_until_graph_sync(console):
     _, c = console
     html = c.get("/ui/ownership/people").text
-    assert "No People Synced Yet" in html and "Leaders &amp; engineers" in html
+    assert "No People Synced Yet" in html and "Leaders &amp; Engineers" in html
 
 
 def test_people_page_and_person_drilldown(console):
@@ -147,7 +147,7 @@ def test_people_page_and_person_drilldown(console):
 def test_ownership_has_people_tab(console):
     _, c = console
     html = c.get("/ui/ownership").text
-    assert 'href="/ui/ownership/people"' in html and "Teams &amp; rules" in html
+    assert 'href="/ui/ownership/people"' in html and "Teams &amp; Rules" in html
 
 
 def test_api_people(console):

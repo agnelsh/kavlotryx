@@ -36,11 +36,11 @@ from kavlotryx.db import (
 from kavlotryx.web.views import RULE_FAMILIES, pct, rule_family, rule_ladder, sev_name
 
 PERSONAS = [
-    ("analyst", "Vulnerability analyst", "One prioritized queue across all scanners"),
-    ("team_lead", "Engineering team lead", "Only the work that belongs to my team"),
-    ("platform", "Cloud platform owner", "Root-cause fixes, not single findings"),
-    ("security_manager", "Security manager", "Proof of progress against due dates"),
-    ("change_manager", "Change manager", "Fixes that touch production"),
+    ("analyst", "Vulnerability Analyst", "One prioritized queue across all scanners"),
+    ("team_lead", "Engineering Team Lead", "Only the work that belongs to my team"),
+    ("platform", "Cloud Platform Owner", "Root-cause fixes, not single findings"),
+    ("security_manager", "Security Manager", "Proof of progress against due dates"),
+    ("change_manager", "Change Manager", "Fixes that touch production"),
 ]
 PERSONA_KEYS = [p[0] for p in PERSONAS]
 ACTIVE = ("open", "dispatched", "reopened", "pending_verification")

@@ -12,7 +12,7 @@ from kavlotryx.config import PolicyConfig
 from kavlotryx.core import triage
 from kavlotryx.db import AuditEvent, Finding, TriageDecision, WorkItem, utcnow
 
-DECISION_STATES = [("proposed", "Waiting for approval"), ("active", "Active"), ("expired", "Expired"),
+DECISION_STATES = [("proposed", "Waiting for Approval"), ("active", "Active"), ("expired", "Expired"),
                    ("revoked", "Revoked"), ("rejected", "Rejected")]
 
 

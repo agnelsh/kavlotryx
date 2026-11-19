@@ -49,9 +49,9 @@
 {% macro vuln_tabs(active) %}
 <nav class="tabs tabs-lg page-tabs" aria-label="Vulnerabilities">
   <a class="{{ 'on' if active == 'findings' }}" href="/ui/vulnerabilities">{{ icon("bug") }}Findings</a>
-  <a class="{{ 'on' if active == 'items' }}" href="/ui/workitems">{{ icon("ticket") }}Work items &amp; tickets</a>
+  <a class="{{ 'on' if active == 'items' }}" href="/ui/workitems">{{ icon("ticket") }}Work Items &amp; Tickets</a>
   <a class="{{ 'on' if active == 'triage' }}" href="/ui/triage">{{ icon("flag") }}Triage</a>
-  <a class="{{ 'on' if active == 'report' }}" href="/ui/triage/report">{{ icon("verified") }}Audit report</a>
+  <a class="{{ 'on' if active == 'report' }}" href="/ui/triage/report">{{ icon("verified") }}Audit Report</a>
 </nav>
 {% endmacro %}
 
@@ -78,8 +78,8 @@
 
 {% macro owner_tabs(active) %}
 <nav class="tabs tabs-lg page-tabs" aria-label="Ownership">
-  <a class="{{ 'on' if active == 'teams' }}" href="/ui/ownership">{{ icon("tree") }}Teams &amp; rules</a>
-  <a class="{{ 'on' if active == 'people' }}" href="/ui/ownership/people">{{ icon("users") }}Leaders &amp; engineers</a>
+  <a class="{{ 'on' if active == 'teams' }}" href="/ui/ownership">{{ icon("tree") }}Teams &amp; Rules</a>
+  <a class="{{ 'on' if active == 'people' }}" href="/ui/ownership/people">{{ icon("users") }}Leaders &amp; Engineers</a>
 </nav>
 {% endmacro %}
 

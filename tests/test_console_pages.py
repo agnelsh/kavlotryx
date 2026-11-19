@@ -165,5 +165,5 @@ def test_old_urls_redirect(admin):
 
 def test_work_items_live_under_vulnerabilities(admin):
     html = admin.get("/ui/workitems").text
-    assert "Work items &amp; tickets" in html
+    assert "Work Items &amp; Tickets" in html
     assert re.search(r'href="/ui/vulnerabilities" class="active"|class="active"[^>]*href="/ui/vulnerabilities"', html)

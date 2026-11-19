@@ -86,15 +86,15 @@ To file real Jira Cloud issues, set `KAVLO_JIRA_URL`, `KAVLO_JIRA_EMAIL` and `KA
 `kavlo serve` also serves a console at `/ui`. People sign in with their organization account through OIDC single sign-on (see below), or with an API token (admin, analyst and viewer roles; ingest tokens can only upload). It has five menus:
 
 - **Dashboard**: pipeline status (stages, scanner freshness, connector syncs, tracker, owner review) and a dashboard for each persona.
-  - *Vulnerability analyst*: severity and scanner mix, what is exploited or likely to be exploited, the review queue, the newest findings.
-  - *Engineering team lead*: only their team's work, by due date.
-  - *Cloud platform owner*: the fixes that remove the most findings, and the packages and rules that spread widest.
-  - *Security manager*: success measures against their targets, SLA and age, progress by owner.
-  - *Change manager*: fixes on production resources, by tag or by ServiceNow CI.
+  - *Vulnerability Analyst*: severity and scanner mix, what is exploited or likely to be exploited, the review queue, the newest findings.
+  - *Engineering Team Lead*: only their team's work, by due date.
+  - *Cloud Platform Owner*: the fixes that remove the most findings, and the packages and rules that spread widest.
+  - *Security Manager*: success measures against their targets, SLA and age, progress by owner.
+  - *Change Manager*: fixes on production resources, by tag or by ServiceNow CI.
 
   The console remembers each person's choice, and `KAVLO_PERSONAS` sets a default per token.
-- **Vulnerabilities**: every finding once, with filters for severity, status, kind, scanner, owner, owner rule, confidence, fix availability, production tags, exploit signal (CISA KEV or EPSS), work item state, ticket, age, account and artifact. It has facet counts, sorting and a formula-safe CSV export. The *Work items* tab holds the tickets, each with a proof-of-closure timeline. The *Triage* and *Audit report* tabs are covered below. Findings and work items also take notes.
-- **Ownership**: owners, the rule ladder, the review queue, manual overrides, the Microsoft Graph, LeanIX and ServiceNow connectors with their mappings and a sync button, and the threat intelligence status. The *Leaders & engineers* tab maps open findings to people (see below).
+- **Vulnerabilities**: every finding once, with filters for severity, status, kind, scanner, owner, owner rule, confidence, fix availability, production tags, exploit signal (CISA KEV or EPSS), work item state, ticket, age, account and artifact. It has facet counts, sorting and a formula-safe CSV export. The *Work Items & Tickets* tab holds the tickets, each with a proof-of-closure timeline. The *Triage* and *Audit Report* tabs are covered below. Findings and work items also take notes.
+- **Ownership**: owners, the rule ladder, the review queue, manual overrides, the Microsoft Graph, LeanIX and ServiceNow connectors with their mappings and a sync button, and the threat intelligence status. The *Leaders & Engineers* tab maps open findings to people (see below).
 - **Scanners**: freshness per scanner and scope, scan history, uploads and verifier decisions.
 - **Settings**, in five tabs:
   - *IAM*: single sign-on settings, the group-to-role map and API tokens.
@@ -144,7 +144,7 @@ These clients are tested against mocked HTTP only. They haven't run against a li
 
 #### Leaders and engineers
 
-The Microsoft Graph sync also reads the owners of each mapped Entra group and walks the `manager` chain above everyone it finds (`connectors.graph.manager_levels`, default 3, fetched in `$batch` calls). The *Leaders & engineers* tab under Ownership, and `GET /api/v1/people`, use that to map every open finding to people:
+The Microsoft Graph sync also reads the owners of each mapped Entra group and walks the `manager` chain above everyone it finds (`connectors.graph.manager_levels`, default 3, fetched in `$batch` calls). The *Leaders & Engineers* tab under Ownership, and `GET /api/v1/people`, use that to map every open finding to people:
 
 - **Engineers** see the findings named to them (through the Graph person tag, the LeanIX responsible person, or a person tag on the asset), plus their team's queue: every finding of the owner their group maps to.
 - **Leaders** are group owners and anyone with reports. Their roll-up is every finding of the teams they lead and of everyone below them in the manager chain.
